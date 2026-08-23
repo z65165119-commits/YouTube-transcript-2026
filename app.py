@@ -1,9 +1,10 @@
-import io
-import re
+from datetime import datetime
+import json
+import os
 from deep_translator import GoogleTranslator
-from google_auth_oauthlib.flow import Flow
 from gtts import gTTS
 import streamlit as st
+from streamlit_google_auth import Authenticate
 import yt_dlp
 from youtube_transcript_api import YouTubeTranscriptApi
 
@@ -14,66 +15,73 @@ st.set_page_config(
 )
 
 # ---------------------------------------------------------
-# 🔑 GOOGLE AUTHENTICATION SETUP (Native OAuth Flow)
+# 🗄️ JSON DATABASE FUNCTIONS FOR USAGE TRACKING
 # ---------------------------------------------------------
-CLIENT_CONFIG = {
-    "web": {
-        "client_id": st.secrets["google_auth"]["client_id"],
-        "client_secret": st.secrets["google_auth"]["client_secret"],
-        "auth_uri": "https://accounts.google.com/o/oauth2/auth",
-        "token_uri": "https://oauth2.googleapis.com/token",
-        "redirect_uris": [st.secrets["google_auth"]["redirect_uri"]],
-    }
-}
+DB_FILE = "usage_db.json"
 
-SCOPES = [
-    "https://www.googleapis.com/auth/userinfo.email",
-    "https://www.googleapis.com/auth/userinfo.profile",
-    "openid",
-]
 
-# OAuth Flow ဖန်တီးခြင်း
-flow = Flow.from_client_config(
-    CLIENT_CONFIG, scopes=SCOPES, redirect_uri=CLIENT_CONFIG["web"]["redirect_uris"][0]
+def load_db():
+  if os.path.exists(DB_FILE):
+    try:
+      with open(DB_FILE, "r", encoding="utf-8") as f:
+        return json.load(f)
+    except Exception:
+      return {}
+  return {}
+
+
+def save_db(db):
+  with open(DB_FILE, "w", encoding="utf-8") as f:
+    json.dump(db, f, ensure_ascii=False, indent=4)
+
+
+def get_user_usage(email):
+  db = load_db()
+  clean_email = email.strip().lower()
+  if clean_email not in db:
+    db[clean_email] = {"count": 0, "first_used": str(datetime.now())}
+    save_db(db)
+  return db[clean_email]["count"]
+
+
+def increment_user_usage(email):
+  db = load_db()
+  clean_email = email.strip().lower()
+  if clean_email not in db:
+    db[clean_email] = {"count": 1, "first_used": str(datetime.now())}
+  else:
+    db[clean_email]["count"] += 1
+  save_db(db)
+
+
+# ---------------------------------------------------------
+# 🔑 GOOGLE AUTHENTICATION SETUP
+# ---------------------------------------------------------
+authenticator = Authenticate(
+    secret_credentials_path="client_secret.json",
+    cookie_name="yt_ai_studio_cookie",
+    cookie_key="yt_ai_studio_secret_key",
+    cookie_expiry_days=30,
 )
 
-# Callback မှ Code ကို စစ်ဆေးခြင်း
-query_params = st.query_params
-if "code" in query_params and not st.session_state.get("connected"):
-  try:
-    auth_code = query_params["code"]
-    flow.fetch_token(code=auth_code)
-    credentials = flow.credentials
-    import requests
+# Login Status စစ်ဆေးခြင်း
+authenticator.check_authenticity()
 
-    user_info_response = requests.get(
-        "https://www.googleapis.com/oauth2/v2/userinfo",
-        headers={"Authorization": f"Bearer {credentials.token}"},
-    ).json()
-
-    st.session_state["connected"] = True
-    st.session_state["user_info"] = user_info_response
-    st.query_params.clear()
-  except Exception as e:
-    st.error(f"Authentication Error: {e}")
-
-# 👑 VIP GMAIL ADDRESS
+# VIP ADMIN GMAIL LIST
 ALLOWED_EMAILS = [
-    "z65165119@gmail.com",
+    "soemoe@gmail.com",
+    "customer1@gmail.com",
 ]
 
 FREE_LIMIT = 5
 
-if "usage_count" not in st.session_state:
-  st.session_state["usage_count"] = 0
-
 # ---------------------------------------------------------
-# 🔝 HEADER BAR WITH GOOGLE SIGN IN
+# 🔝 HEADER BAR WITH SIGN IN / USER INFO
 # ---------------------------------------------------------
-col_title, col_auth = st.columns([3, 1.2])
+col_title, col_auth = st.columns([3, 1])
 
 with col_title:
-  st.title("🔴⚡ YouTube AI Studio & Script Suite")
+  st.title("🔴⚡ YouTube AI Studio")
 
 with col_auth:
   if st.session_state.get("connected"):
@@ -86,13 +94,11 @@ with col_auth:
     if user_picture:
       st.image(user_picture, width=40)
 
-    if st.button("Sign Out"):
-      st.session_state["connected"] = False
-      st.session_state.pop("user_info", None)
-      st.rerun()
+    # Logout Button
+    authenticator.logout(button_name="Sign Out", key="signout_btn")
   else:
-    auth_url, _ = flow.authorization_url(prompt="consent")
-    st.link_button("🔑 Sign In with Google", auth_url, type="primary")
+    # Top-Right Sign In Button
+    authenticator.login(button_name="Sign In with Google", key="google_login")
 
 st.markdown("---")
 
@@ -104,26 +110,27 @@ if not st.session_state.get("connected"):
       "⚠️ App အသုံးပြုရန် ညာဘက်အပေါ်ထောင့်ရှိ **'Sign In with Google'**"
       " ခလုတ်ကို နှိပ်၍ Sign In ဝင်ပေးပါ။"
   )
-  st.info(
-      "💡 Google Account ဖြင့် ဝင်ရောက်ပြီး အခမဲ့ ၅ ကြိမ် စမ်းသပ်သုံးစွဲနိုင်ပါသည်။"
-  )
+  st.info("💡 Google Account ဖြင့် ဝင်ရောက်ပြီး အခမဲ့ သုံးစွဲနိုင်ပါသည်။")
   st.stop()
 
-user_info = st.session_state.get("user_info", {})
-clean_email = user_info.get("email", "").strip().lower()
+# User Gmail Status စစ်ဆေးခြင်း
+clean_email = user_email.strip().lower()
 allowed_emails_lower = [e.strip().lower() for e in ALLOWED_EMAILS]
 is_vip = clean_email in allowed_emails_lower
+
+# ဒေတာဘေ့စ်မှ လက်ရှိ သုံးပြီးသလောက် အကြိမ်ရေကို ထုတ်ယူခြင်း
+current_usage = get_user_usage(clean_email)
 
 # ---------------------------------------------------------
 # ⚙️ SIDEBAR - USER ACCOUNT & OPTIONS
 # ---------------------------------------------------------
-st.sidebar.header("👤 Account Status")
-st.sidebar.write(f"**Email:** {clean_email}")
+st.sidebar.header("👤 Account Info")
+st.sidebar.write(f"**Logged in as:**\n{clean_email}")
 
 if is_vip:
   st.sidebar.success("👑 **VIP Unlimited Access**")
 else:
-  remaining = max(0, FREE_LIMIT - st.session_state["usage_count"])
+  remaining = max(0, FREE_LIMIT - current_usage)
   st.sidebar.info(f"🎁 Free သုံးစွဲခွင့် ကျန်ရှိသည့်အကြိမ်: {remaining} / {FREE_LIMIT}")
 
 st.sidebar.markdown("---")
@@ -135,11 +142,10 @@ summary_length = st.sidebar.select_slider(
     value="Medium",
 )
 
-if not is_vip and st.session_state["usage_count"] >= FREE_LIMIT:
+if not is_vip and current_usage >= FREE_LIMIT:
   st.error("❌ သင့်၏ အခမဲ့ ၅ ကြိမ် အသုံးပြုခွင့် ကုန်ဆုံးသွားပါပြီ။")
-  st.info(
-      "👉 ဆက်လက်အသုံးပြုလိုပါက Telegram **[@lynn_m2026](https://t.me/lynn_m2026)**"
-      " သို့ ဆက်သွယ်၍ VIP Access ရယူနိုင်ပါသည်။"
+  st.warning(
+      "ဆက်လက်အသုံးပြုလိုပါက Admin ထံ သို့ ဆက်သွယ်၍ **VIP Access** တောင်းခံပါရန်။"
   )
   st.stop()
 
@@ -165,7 +171,7 @@ def format_srt_time(seconds):
   mins = int((seconds % 3600) // 60)
   secs = int(seconds % 60)
   millis = int((seconds % 1) * 1000)
-  return f"{hrs:02d}:{mins:02d}:{secs:03d}"
+  return f"{hrs:02d}:{mins:02d}:{secs:02d},{millis:03d}"
 
 
 def generate_srt(transcript_data):
@@ -273,8 +279,9 @@ if st.button("⚡ Script & AI Processing စတင်မည်", type="primary")
 
           st.success("✅ အားလုံး အောင်မြင်စွာ ထုတ်ယူပြီးပါပြီ!")
 
+          # Free User ဖြစ်လျှင် အသုံးပြုပြီးမှုကို Database ထဲတွင် တစ်ကြိမ်တိုးပေးမည်
           if not is_vip:
-            st.session_state["usage_count"] += 1
+            increment_user_usage(clean_email)
 
           m1, m2, m3 = st.columns(3)
           m1.metric("📝 စာလုံးရေ (Words)", f"{words:,}")
@@ -350,3 +357,4 @@ if st.button("⚡ Script & AI Processing စတင်မည်", type="primary")
         st.error(f"❌ Script ထုတ်ယူ၍ မရပါ။ ({str(e)})")
   else:
     st.warning("⚠️ ကျေးဇူးပြု၍ YouTube Link ရိုက်ထည့်ပေးပါ။")
+    
