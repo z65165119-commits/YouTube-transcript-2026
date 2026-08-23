@@ -58,7 +58,6 @@ def increment_user_usage(email):
 # ---------------------------------------------------------
 # 🔑 SIMPLE SIMULATED GOOGLE / EMAIL LOGIN SESSION
 # ---------------------------------------------------------
-# VIP ADMIN GMAIL LIST
 ALLOWED_EMAILS = [
     "soemoe@gmail.com",
     "customer1@gmail.com",
@@ -109,12 +108,9 @@ if not st.session_state["logged_in"]:
 
   st.stop()
 
-# User Gmail Status စစ်ဆေးခြင်း
 clean_email = st.session_state["user_email"]
 allowed_emails_lower = [e.strip().lower() for e in ALLOWED_EMAILS]
 is_vip = clean_email in allowed_emails_lower
-
-# ဒေတာဘေ့စ်မှ လက်ရှိ သုံးပြီးသလောက် အကြိမ်ရေကို ထုတ်ယူခြင်း
 current_usage = get_user_usage(clean_email)
 
 # ---------------------------------------------------------
@@ -180,6 +176,31 @@ def generate_srt(transcript_data):
   return srt_output
 
 
+# 🛡️ ROBUST CHUNKED TRANSLATION FUNCTION (Error 500 မတက်အောင် အပိုင်းခွဲဘာသာပြန်ခြင်း)
+def chunked_translate(text, chunk_size=3000):
+  translator = GoogleTranslator(source="auto", target="my")
+  if len(text) <= chunk_size:
+    try:
+      return translator.translate(text)
+    except Exception:
+      return text
+
+  chunks = [
+      text[i : i + chunk_size] for i in range(0, len(text), chunk_size)
+  ]
+  translated_chunks = []
+  for chunk in chunks:
+    try:
+      res = translator.translate(chunk)
+      if res:
+        translated_chunks.append(res)
+      else:
+        translated_chunks.append(chunk)
+    except Exception:
+      translated_chunks.append(chunk)
+  return " ".join(translated_chunks)
+
+
 def fetch_transcript_robust(v_url, v_id):
   try:
     return YouTubeTranscriptApi.get_transcript(
@@ -238,7 +259,7 @@ if st.button("⚡ Script & AI Processing စတင်မည်", type="primary")
         st.video(video_url)
 
         with st.spinner(
-            "⏳ Transcript နှင့် AI Data များကို တွက်ချက်နေပါသည်..."
+            "⏳ Transcript နှင့် AI Data များကို တွက်ချက်ဘာသာပြန်နေပါသည်..."
         ):
           fetched_transcript = fetch_transcript_robust(video_url, video_id)
 
@@ -259,8 +280,8 @@ if st.button("⚡ Script & AI Processing စတင်မည်", type="primary")
           chars = len(raw_text_combined)
           est_read_time = round(words / 150, 1)
 
-          translator = GoogleTranslator(source="auto", target="my")
-          myanmar_translation = translator.translate(raw_text_combined[:4000])
+          # အပိုင်းခွဲဘာသာပြန်ခြင်းကို သုံးစွဲခြင်း (Error 500 ကာကွယ်ရန်)
+          myanmar_translation = chunked_translate(raw_text_combined)
 
           srt_content = generate_srt(fetched_transcript)
 
@@ -271,11 +292,10 @@ if st.button("⚡ Script & AI Processing စတင်မည်", type="primary")
               else (sentences[:6] if summary_length == "Medium" else sentences[:10])
           )
           summary_en = ". ".join(summary_sentences) + "."
-          summary_my = translator.translate(summary_en[:2000])
+          summary_my = chunked_translate(summary_en)
 
-          st.success("✅ အားလုံး အောင်မြင်စွာ ထုတ်ယူပြီးပါပြီ!")
+          st.success("✅ အားလုံး အောင်မြင်စွာ ထုတ်ယူဘာသာပြန်ပြီးပါပြီ!")
 
-          # Free User ဖြစ်လျှင် အသုံးပြုပြီးမှုကို Database ထဲတွင် တစ်ကြိမ်တိုးပေးမည်
           if not is_vip:
             increment_user_usage(clean_email)
 
@@ -353,4 +373,3 @@ if st.button("⚡ Script & AI Processing စတင်မည်", type="primary")
         st.error(f"❌ Script ထုတ်ယူ၍ မရပါ။ ({str(e)})")
   else:
     st.warning("⚠️ ကျေးဇူးပြု၍ YouTube Link ရိုက်ထည့်ပေးပါ။")
-        
