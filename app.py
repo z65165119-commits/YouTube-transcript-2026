@@ -58,7 +58,7 @@ def increment_user_usage(email):
 # 🔑 GOOGLE AUTHENTICATION SETUP
 # ---------------------------------------------------------
 authenticator = Authenticate(
-    secret_credentials_path="client_secret.json",
+    "client_secret.json",
     cookie_name="yt_ai_studio_cookie",
     cookie_key="yt_ai_studio_secret_key",
     cookie_expiry_days=30,
@@ -357,4 +357,4 @@ if st.button("⚡ Script & AI Processing စတင်မည်", type="primary")
         st.error(f"❌ Script ထုတ်ယူ၍ မရပါ။ ({str(e)})")
   else:
     st.warning("⚠️ ကျေးဇူးပြု၍ YouTube Link ရိုက်ထည့်ပေးပါ။")
-    
+      
