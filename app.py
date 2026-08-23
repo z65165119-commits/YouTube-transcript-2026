@@ -4,7 +4,6 @@ import os
 from deep_translator import GoogleTranslator
 from gtts import gTTS
 import streamlit as st
-from streamlit_google_auth import Authenticate
 import yt_dlp
 from youtube_transcript_api import YouTubeTranscriptApi
 
@@ -55,18 +54,8 @@ def increment_user_usage(email):
 
 
 # ---------------------------------------------------------
-# 🔑 GOOGLE AUTHENTICATION SETUP (CORRECTED)
+# 🔑 SIMPLE SIMULATED GOOGLE / EMAIL LOGIN SESSION
 # ---------------------------------------------------------
-authenticator = Authenticate(
-    secret_credentials_path="client_secret.json",
-    cookie_name="yt_ai_studio_cookie",
-    cookie_key="yt_ai_studio_secret_key",
-    redirect_uri="https://2ar8y.streamlit.app",
-)
-
-# Login Status စစ်ဆေးခြင်း
-authenticator.check_authenticity()
-
 # VIP ADMIN GMAIL LIST
 ALLOWED_EMAILS = [
     "soemoe@gmail.com",
@@ -74,6 +63,10 @@ ALLOWED_EMAILS = [
 ]
 
 FREE_LIMIT = 5
+
+if "logged_in" not in st.session_state:
+  st.session_state["logged_in"] = False
+  st.session_state["user_email"] = ""
 
 # ---------------------------------------------------------
 # 🔝 HEADER BAR WITH SIGN IN / USER INFO
@@ -84,37 +77,37 @@ with col_title:
   st.title("🔴⚡ YouTube AI Studio")
 
 with col_auth:
-  if st.session_state.get("connected"):
-    user_info = st.session_state.get("user_info", {})
-    user_email = user_info.get("email", "")
-    user_name = user_info.get("name", "User")
-    user_picture = user_info.get("picture", "")
-
-    st.write(f"👋 **{user_name}**")
-    if user_picture:
-      st.image(user_picture, width=40)
-
-    # Logout Button
-    authenticator.logout(button_name="Sign Out", key="signout_btn")
-  else:
-    # Top-Right Sign In Button
-    authenticator.login(button_name="Sign In with Google", key="google_login")
-
-st.markdown("---")
+  if st.session_state["logged_in"]:
+    st.write(f"👋 **{st.session_state['user_email']}**")
+    if st.button("Sign Out", key="signout_btn"):
+      st.session_state["logged_in"] = False
+      st.session_state["user_email"] = ""
+      st.rerun()
 
 # ---------------------------------------------------------
-# 🚨 MANDATORY GOOGLE LOGIN CHECK
+# 🚨 MANDATORY LOGIN CHECK
 # ---------------------------------------------------------
-if not st.session_state.get("connected"):
-  st.warning(
-      "⚠️ App အသုံးပြုရန် ညာဘက်အပေါ်ထောင့်ရှိ **'Sign In with Google'**"
-      " ခလုတ်ကို နှိပ်၍ Sign In ဝင်ပေးပါ။"
-  )
-  st.info("💡 Google Account ဖြင့် ဝင်ရောက်ပြီး အခမဲ့ သုံးစွဲနိုင်ပါသည်။")
+if not st.session_state["logged_in"]:
+  st.markdown("---")
+  st.warning("⚠️ App အသုံးပြုရန် သင့်၏ Gmail (သို့) Email ဖြင့် အရင် ဝင်ရောက်ပါ။")
+
+  with st.form("login_form"):
+    input_email = st.text_input("📧 Your Gmail Address:")
+    submit_login = st.form_submit_button("Sign In / ဝင်မည်", type="primary")
+
+    if submit_login:
+      if input_email and "@" in input_email:
+        st.session_state["logged_in"] = True
+        st.session_state["user_email"] = input_email.strip().lower()
+        st.success("✅ အောင်မြင်စွာ ဝင်ရောက်ပြီးပါပြီ!")
+        st.rerun()
+      else:
+        st.error("❌ ကျေးဇူးပြု၍ မှန်ကန်သော Email လိပ်စာ ထည့်ပါ။")
+
   st.stop()
 
 # User Gmail Status စစ်ဆေးခြင်း
-clean_email = user_email.strip().lower()
+clean_email = st.session_state["user_email"]
 allowed_emails_lower = [e.strip().lower() for e in ALLOWED_EMAILS]
 is_vip = clean_email in allowed_emails_lower
 
