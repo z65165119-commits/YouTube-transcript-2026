@@ -176,7 +176,7 @@ def generate_srt(transcript_data):
   return srt_output
 
 
-# 🛡️ ROBUST CHUNKED TRANSLATION FUNCTION (Error 500 မတက်အောင် အပိုင်းခွဲဘာသာပြန်ခြင်း)
+# 🛡️ ROBUST CHUNKED TRANSLATION FUNCTION (Error 500 ကာကွယ်ရန်)
 def chunked_translate(text, chunk_size=3000):
   translator = GoogleTranslator(source="auto", target="my")
   if len(text) <= chunk_size:
@@ -280,7 +280,6 @@ if st.button("⚡ Script & AI Processing စတင်မည်", type="primary")
           chars = len(raw_text_combined)
           est_read_time = round(words / 150, 1)
 
-          # အပိုင်းခွဲဘာသာပြန်ခြင်းကို သုံးစွဲခြင်း (Error 500 ကာကွယ်ရန်)
           myanmar_translation = chunked_translate(raw_text_combined)
 
           srt_content = generate_srt(fetched_transcript)
@@ -315,7 +314,13 @@ if st.button("⚡ Script & AI Processing စတင်မည်", type="primary")
 
           with tab1:
             st.subheader("English Script")
-            st.code(full_english_script, language="text")
+            # Copy လုပ်ရလွယ်ကူအောင် st.text_area သုံးပေးထားပါသည် (右上角မှာ Copy button ပါပြီးသားဖြစ်သည်)
+            st.text_area(
+                "English Text",
+                value=full_english_script,
+                height=300,
+                key="en_script_area",
+            )
             st.download_button(
                 "📥 Download English Script (.txt)",
                 data=full_english_script.encode("utf-8-sig"),
@@ -325,7 +330,12 @@ if st.button("⚡ Script & AI Processing စတင်မည်", type="primary")
 
           with tab2:
             st.subheader("မြန်မာ ဘာသာပြန် Script")
-            st.code(myanmar_translation, language="text")
+            st.text_area(
+                "Myanmar Text",
+                value=myanmar_translation,
+                height=300,
+                key="my_script_area",
+            )
             st.download_button(
                 "📥 Download မြန်မာ Script (.txt)",
                 data=myanmar_translation.encode("utf-8-sig"),
@@ -336,9 +346,19 @@ if st.button("⚡ Script & AI Processing စတင်မည်", type="primary")
           with tab3:
             st.subheader("🤖 AI Script Summary & Story Recap")
             st.write("**English Summary:**")
-            st.code(summary_en, language="text")
+            st.text_area(
+                "English Summary Text",
+                value=summary_en,
+                height=150,
+                key="en_sum_area",
+            )
             st.write("**မြန်မာအနှစ်ချုပ် / ပြန်လည်ဆန်းသစ်ချက်:**")
-            st.code(summary_my, language="text")
+            st.text_area(
+                "Myanmar Summary Text",
+                value=summary_my,
+                height=150,
+                key="my_sum_area",
+            )
 
           with tab4:
             st.subheader("🎬 SRT Subtitle & Myanmar Voiceover (TTS)")
@@ -346,9 +366,11 @@ if st.button("⚡ Script & AI Processing စတင်မည်", type="primary")
 
             with col_sub:
               st.write("📄 **SRT Subtitle File:**")
-              st.code(
-                  srt_content[:1000] + "...\n[Truncated Preview]",
-                  language="text",
+              st.text_area(
+                  "SRT Preview",
+                  value=srt_content[:2000] + "\n[Truncated Preview]",
+                  height=200,
+                  key="srt_area",
               )
               st.download_button(
                   "📥 Download Subtitle (.srt)",
@@ -373,3 +395,4 @@ if st.button("⚡ Script & AI Processing စတင်မည်", type="primary")
         st.error(f"❌ Script ထုတ်ယူ၍ မရပါ။ ({str(e)})")
   else:
     st.warning("⚠️ ကျေးဇူးပြု၍ YouTube Link ရိုက်ထည့်ပေးပါ။")
+    
