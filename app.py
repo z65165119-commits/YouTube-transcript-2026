@@ -1,6 +1,8 @@
 from datetime import datetime
+import io
 import json
 import os
+import re
 from deep_translator import GoogleTranslator
 from gtts import gTTS
 import streamlit as st
@@ -60,6 +62,7 @@ def increment_user_usage(email):
 ALLOWED_EMAILS = [
     "soemoe@gmail.com",
     "customer1@gmail.com",
+    "zlynn7368@gmail.com",
 ]
 
 FREE_LIMIT = 5
@@ -350,3 +353,4 @@ if st.button("⚡ Script & AI Processing စတင်မည်", type="primary")
         st.error(f"❌ Script ထုတ်ယူ၍ မရပါ။ ({str(e)})")
   else:
     st.warning("⚠️ ကျေးဇူးပြု၍ YouTube Link ရိုက်ထည့်ပေးပါ။")
+        
