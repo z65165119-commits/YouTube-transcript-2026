@@ -1,0 +1,6 @@
+streamlit
+google-auth-oauthlib
+youtube-transcript-api
+yt-dlp
+deep-translator
+gTTS
