@@ -182,28 +182,22 @@ def generate_srt(transcript_data):
   return srt_output
 
 
-def chunked_translate(text, chunk_size=1500):
+def chunked_translate(text, chunk_size=800):
   if not text.strip():
     return ""
 
   translator = GoogleTranslator(source="auto", target="my")
-  
-  # စာကြောင်းများကို ပိုမိုပြည့်စုံစေရန် sentences ဖြင့် ခွဲ၍ ဘာသာပြန်ခြင်း
-  sentences = re.split(r'(?<=[.!?])\s+', text)
-  chunks = []
-  current_chunk = ""
+  if len(text) <= chunk_size:
+    try:
+      return translator.translate(text)
+    except Exception:
+      return text
 
-  for sentence in sentences:
-    if len(current_chunk) + len(sentence) < chunk_size:
-      current_chunk += " " + sentence
-    else:
-      if current_chunk:
-        chunks.append(current_chunk.strip())
-      current_chunk = sentence
-  if current_chunk:
-    chunks.append(current_chunk.strip())
-
+  chunks = [
+      text[i : i + chunk_size] for i in range(0, len(text), chunk_size)
+  ]
   translated_chunks = []
+
   for chunk in chunks:
     success = False
     for attempt in range(3):
@@ -219,9 +213,9 @@ def chunked_translate(text, chunk_size=1500):
 
     if not success:
       translated_chunks.append(chunk)
-    time.sleep(0.2)
+    time.sleep(0.3)
 
-  return "\n\n".join(translated_chunks)
+  return " ".join(translated_chunks)
 
 
 def fetch_transcript_robust(v_url, v_id):
@@ -321,7 +315,7 @@ if st.button("⚡ Script & AI Processing စတင်မည်", type="primary")
           chars = len(raw_text_combined)
           est_read_time = round(words / 150, 1)
 
-        with st.spinner("⏳ မြန်မာဘာသာသို့ အပြည့်အစုံ ဘာသာပြန်ဆိုနေပါသည်..."):
+        with st.spinner("⏳ မြန်မာဘာသာသို့ ဘာသာပြန်ဆိုနေပါသည်..."):
           myanmar_translation = chunked_translate(raw_text_combined)
 
           srt_content = generate_srt(fetched_transcript)
@@ -420,3 +414,4 @@ if st.button("⚡ Script & AI Processing စတင်မည်", type="primary")
         st.error(f"❌ အမှားအယွင်း ဖြစ်ပေါ်သွားပါသည်: {str(e)}")
   else:
     st.warning("⚠️ ကျေးဇူးပြု၍ YouTube Link ရိုက်ထည့်ပေးပါ။")
+    
