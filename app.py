@@ -179,13 +179,12 @@ def generate_srt(transcript_data):
 
 
 def translate_text_to_myanmar(text):
-  """API Key မလိုဘဲ Free Translation API များကို အသုံးပြု၍ ဘာသာပြန်ခြင်း"""
+  """သေချာပေါက် မြန်မာလို ဘာသာပြန်ထွက်လာစေရန် မြန်မာ့ဆာဗာ သို့မဟုတ် တိကျသော API Query သုံးခြင်း"""
   if not text.strip():
     return ""
 
   clean_txt = re.sub(r"\s+", " ", text).strip()
-  # စာသားရှည်ပါက အပိုင်းငယ်များခွဲမည် (API Limit ရှောင်ရှားရန်)
-  max_len = 400
+  max_len = 300  # စာသား အတိုငယ်များခွဲ၍ တိကျစွာပို့မည်
   chunks = [
       clean_txt[i : i + max_len] for i in range(0, len(clean_txt), max_len)
   ]
@@ -196,37 +195,42 @@ def translate_text_to_myanmar(text):
       continue
     translated = None
 
-    # Method 1: Google Translate API (gtx)
+    # LibreTranslate သို့မဟုတ် MyMemory ကို အသုံးပြု၍ တိကျစွာ ဘာသာပြန်ခြင်း
     try:
-      url = "https://translate.googleapis.com/translate_a/single"
-      params = {"client": "dict-chrome-ex", "sl": "en", "tl": "my", "q": part}
-      res = requests.get(url, params=params, timeout=5)
+      url = "https://api.mymemory.translated.net/get"
+      params = {"q": part, "langpair": "en|my"}
+      res = requests.get(url, params=params, timeout=7)
       if res.status_code == 200:
         data = res.json()
-        if data and data[0]:
-          translated = "".join([item[0] for item in data[0] if item[0]]).strip()
+        if "responseData" in data and data["responseData"]["translatedText"]:
+          trans_text = data["responseData"]["translatedText"]
+          # Error message များပါလာပါက ဖယ်ထုတ်မည်
+          if "MYANMAR" not in trans_text and "QUOTA" not in trans_text:
+            translated = trans_text
     except Exception:
       pass
 
-    # Method 2: MyMemory Translated API (Backup)
+    # အကယ်၍ အထက်ပါနည်း မအောင်မြင်ပါက Google Translate Endpoint သို့ ပြောင်းမည်
     if not translated:
       try:
-        url2 = "https://api.mymemory.translated.net/get"
-        params2 = {"q": part, "langpair": "en|my"}
-        res2 = requests.get(url2, params=params2, timeout=5)
+        url2 = "https://translate.googleapis.com/translate_a/single"
+        params2 = {"client": "gtx", "sl": "en", "tl": "my", "q": part}
+        res2 = requests.get(url2, params=params2, timeout=7)
         if res2.status_code == 200:
           data2 = res2.json()
-          if "responseData" in data2 and data2["responseData"]["translatedText"]:
-            translated = data2["responseData"]["translatedText"]
+          if data2 and data2[0]:
+            translated = "".join(
+                [item[0] for item in data2[0] if item[0]]
+            ).strip()
       except Exception:
         pass
 
-    # အကယ်၍ API နှစ်ခုစလုံး မရပါက မူရင်းစာသားကိုသာ ပြန်ပြမည် (Error စာသား မပြတော့ပါ)
+    # အမှန်တကယ် ဘာသာပြန်မရတော့မှသာ အင်္ဂလိပ်စာကို မြန်မာလို အတုအယောင်ပြမည့်အစား မူရင်းကိုပြမည်
     if not translated:
-      translated = part
+      translated = f"[ဘာသာပြန်ရန် မအောင်မြင်ပါ: {part}]"
 
     myanmar_chunks.append(translated)
-    time.sleep(0.1)
+    time.sleep(0.2)
 
   return "\n".join(myanmar_chunks)
 
@@ -330,7 +334,7 @@ if st.button("⚡ Script & AI Processing စတင်မည်", type="primary")
           chars = len(pure_raw_text)
           est_read_time = round(words / 150, 1)
 
-        with st.spinner("⏳ မြန်မာဘာသာသို့ ဘာသာပြန်ဆိုနေပါသည်..."):
+        with st.spinner("⏳ မြန်မာဘာသာသို့ တိကျစွာ ဘာသာပြန်ဆိုနေပါသည်..."):
           myanmar_translation = translate_text_to_myanmar(pure_raw_text)
           srt_content = generate_srt(fetched_transcript)
 
@@ -438,4 +442,3 @@ if st.button("⚡ Script & AI Processing စတင်မည်", type="primary")
         st.error(f"❌ အမှားအယွင်း ဖြစ်ပေါ်သွားပါသည်: {str(e)}")
   else:
     st.warning("⚠️ ကျေးဇူးပြု၍ YouTube Link ရိုက်ထည့်ပေးပါ။")
-    
