@@ -183,14 +183,28 @@ def generate_srt(transcript_data):
 
 
 def translate_text_free(text):
-  """Google Translate Public API ကို အသုံးပြု၍ တိကျသေချာစွာ မြန်မာလို ဘာသာပြန်ခြင်း"""
+  """Google Translate Public API ကို အသုံးပြု၍ အပိုင်းလိုက် တိကျစွာ ဘာသာပြန်ခြင်း"""
   if not text.strip():
     return ""
 
   try:
-    # စာသားများလွန်းလျှင် ၄၀၀၀ စာလုံးစီ အပိုင်းခွဲမည်
-    chunk_size = 4000
-    chunks = [text[i : i + chunk_size] for i in range(0, len(text), chunk_size)]
+    chunk_size = 1000
+    words = text.split(" ")
+    chunks = []
+    current_chunk = []
+    current_length = 0
+
+    for word in words:
+      if current_length + len(word) + 1 < chunk_size:
+        current_chunk.append(word)
+        current_length += len(word) + 1
+      else:
+        chunks.append(" ".join(current_chunk))
+        current_chunk = [word]
+        current_length = len(word) + 1
+    if current_chunk:
+      chunks.append(" ".join(current_chunk))
+
     translated_full = []
 
     for chunk in chunks:
@@ -202,20 +216,23 @@ def translate_text_free(text):
           "dt": "t",
           "q": chunk,
       }
-      response = requests.get(url, params=params, timeout=10)
+      response = requests.get(url, params=params, timeout=15)
       if response.status_code == 200:
         res_json = response.json()
-        translated_chunk = "".join(
-            [sentence[0] for sentence in res_json[0] if sentence[0]]
-        )
-        translated_full.append(translated_chunk)
+        if res_json and res_json[0]:
+          translated_chunk = "".join(
+              [sentence[0] for sentence in res_json[0] if sentence[0]]
+          )
+          translated_full.append(translated_chunk)
       else:
         translated_full.append(chunk)
-      time.sleep(0.2)
+      time.sleep(0.3)
 
-    return " ".join(translated_full)
+    return "\n".join(translated_full)
   except Exception as e:
-    return f"ဘာသာပြန်ဆိုရာတွင် အခက်အခဲရှိပါသည်။ ({str(e)})"
+    return (
+        f"ဘာသာပြန်ဆိုရာတွင် အခက်အခဲရှိပါသည်။ (အသေးစိတ်အချက်အလက်: {str(e)})"
+    )
 
 
 def fetch_transcript_robust(v_url, v_id):
@@ -301,9 +318,7 @@ if st.button("⚡ Script & AI Processing စတင်မည်", type="primary")
           for item in fetched_transcript:
             start_str = format_time(item["start"])
             text = item["text"].strip()
-            clean_t = re.sub(
-                r"^\d+\.?\s*", "", text
-            )  # နံပါတ်များကို ဖယ်ထုတ်မည်
+            clean_t = re.sub(r"^\d+\.?\s*", "", text)
             if clean_t:
               pure_texts.append(clean_t)
 
@@ -341,7 +356,6 @@ if st.button("⚡ Script & AI Processing စတင်မည်", type="primary")
 
         st.success("✅ အားလုံး အောင်မြင်စွာ ထုတ်ယူဘာသာပြန်ပြီးပါပြီ!")
 
-        # Free User ဖြစ်မှသာ Database ထဲတွင် အကြိမ်ရေ တိုးပေးမည်
         if not is_vip:
           increment_user_usage(clean_email)
 
@@ -424,4 +438,3 @@ if st.button("⚡ Script & AI Processing စတင်မည်", type="primary")
         st.error(f"❌ အမှားအယွင်း ဖြစ်ပေါ်သွားပါသည်: {str(e)}")
   else:
     st.warning("⚠️ ကျေးဇူးပြု၍ YouTube Link ရိုက်ထည့်ပေးပါ။")
-    
