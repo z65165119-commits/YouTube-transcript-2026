@@ -439,4 +439,4 @@ if st.button("⚡ Script & AI Processing စတင်မည်", type="primary")
         st.error(f"❌ အမှားအယွင်း ဖြစ်ပေါ်သွားပါသည်: {str(e)}")
   else:
     st.warning("⚠️ ကျေးဇူးပြု၍ YouTube Link ရိုက်ထည့်ပေးပါ။")
-        
+    
