@@ -17,7 +17,7 @@ st.set_page_config(
 )
 
 # ---------------------------------------------------------
-# 🗄️ JSON DATABASE FUNCTIONS FOR USAGE TRACKING
+# 🗄️ JSON DATABASE FUNCTIONS FOR PERSISTENT USAGE TRACKING
 # ---------------------------------------------------------
 DB_FILE = "usage_db.json"
 
@@ -57,7 +57,7 @@ def increment_user_usage(email):
 
 
 # ---------------------------------------------------------
-# 🔑 SIMPLE SIMULATED GOOGLE / EMAIL LOGIN SESSION
+# 🔑 LOGIN SESSION MANAGEMENT
 # ---------------------------------------------------------
 ALLOWED_EMAILS = [
     "soemoe@gmail.com",
@@ -125,6 +125,9 @@ if is_vip:
 else:
   remaining = max(0, FREE_LIMIT - current_usage)
   st.sidebar.info(f"🎁 အခမဲ့ သုံးစွဲခွင့် ကျန်ရှိသည့်အကြိမ်: {remaining} / {FREE_LIMIT}")
+  st.sidebar.markdown(
+      "💬 **VIP ဝယ်ယူရန် ဆက်သွယ်ရန်:**\nTelegram: [@lynn_m2026](https://t.me/lynn_m2026)"
+  )
 
 st.sidebar.markdown("---")
 st.sidebar.header("⚙️ Options")
@@ -139,7 +142,8 @@ summary_length = st.sidebar.select_slider(
 if not is_vip and current_usage >= FREE_LIMIT:
   st.error("❌ သင့်၏ အခမဲ့ ၅ ကြိမ် အသုံးပြုခွင့် ကုန်ဆုံးသွားပါပြီ။")
   st.warning(
-      "ဆက်လက်အသုံးပြုလိုပါက Admin ထံ သို့ ဆက်သွယ်၍ **VIP Access** ရယူပါရန်။"
+      "ဆက်လက်အသုံးပြုလိုပါက Telegram **@lynn_m2026** ထံသို့ ဆက်သွယ်၍ **VIP"
+      " Access** ရယူပါရန်။"
   )
   st.stop()
 
@@ -178,11 +182,10 @@ def generate_srt(transcript_data):
   return srt_output
 
 
-# 🛡️ SAFE TRANSLATION FUNCTION (Error 500 မတက်အောင်နှင့် လုံးဝဆိုင်းမနေစေရန်)
 def chunked_translate(text, chunk_size=800):
   if not text.strip():
     return ""
-  
+
   translator = GoogleTranslator(source="auto", target="my")
   if len(text) <= chunk_size:
     try:
@@ -194,10 +197,10 @@ def chunked_translate(text, chunk_size=800):
       text[i : i + chunk_size] for i in range(0, len(text), chunk_size)
   ]
   translated_chunks = []
-  
+
   for chunk in chunks:
     success = False
-    for attempt in range(2):  # ၂ ကြိမ်သာ ထပ်ကြိုးစားမည် (Infinite loop မဖြစ်စေရန်)
+    for attempt in range(2):
       try:
         res = translator.translate(chunk)
         if res:
@@ -207,7 +210,7 @@ def chunked_translate(text, chunk_size=800):
       except Exception:
         pass
       time.sleep(0.3)
-    
+
     if not success:
       translated_chunks.append(chunk)
     time.sleep(0.2)
@@ -216,15 +219,15 @@ def chunked_translate(text, chunk_size=800):
 
 
 def fetch_transcript_robust(v_url, v_id):
-  # ပထမနည်းလမ်း - YouTube Transcript API ကို သုံးခြင်း
   try:
-    tx = YouTubeTranscriptApi.get_transcript(v_id, languages=["en", "en-US", "my", "auto"])
+    tx = YouTubeTranscriptApi.get_transcript(
+        v_id, languages=["en", "en-US", "my", "auto"]
+    )
     if tx:
       return tx
   except Exception:
     pass
 
-  # ဒုတိယနည်းလမ်း - yt_dlp ဖြင့် Subtitles ထုတ်ယူခြင်း
   ydl_opts = {
       "skip_download": True,
       "writesubtitles": True,
@@ -249,15 +252,23 @@ def fetch_transcript_robust(v_url, v_id):
 
         sub_data = subtitles[lang]
         import requests
+
         json_url = next(
-            (s["url"] for s in sub_data if s.get("ext") == "json3" or "json" in s.get("ext", "")), None
+            (
+                s["url"]
+                for s in sub_data
+                if s.get("ext") == "json3" or "json" in s.get("ext", "")
+            ),
+            None,
         )
         if json_url:
           res = requests.get(json_url, timeout=10).json()
           parsed_transcript = []
           for event in res.get("events", []):
             if "segs" in event:
-              text = "".join([s.get("utf8", "") for s in event["segs"]]).strip()
+              text = "".join(
+                  [s.get("utf8", "") for s in event["segs"]]
+              ).strip()
               if text and text != "\n":
                 start = event.get("tStartMs", 0) / 1000.0
                 dur = event.get("dDurationMs", 0) / 1000.0
@@ -269,7 +280,10 @@ def fetch_transcript_robust(v_url, v_id):
   except Exception:
     pass
 
-  raise Exception("ဒီဗီဒီယိုတွင် YouTube Transcript (သို့) Subtitles လုံးဝ မရှိပါ (သို့မဟုတ် YouTube မှ တားမြစ်ထားပါသည်)။")
+  raise Exception(
+      "ဒီဗီဒီယိုတွင် YouTube Transcript (သို့) Subtitles လုံးဝ မရှိပါ (သို့မဟုတ်"
+      " YouTube မှ တားမြစ်ထားပါသည်)။"
+  )
 
 
 if st.button("⚡ Script & AI Processing စတင်မည်", type="primary"):
@@ -317,12 +331,12 @@ if st.button("⚡ Script & AI Processing စတင်မည်", type="primary")
 
         st.success("✅ အားလုံး အောင်မြင်စွာ ထုတ်ယူဘာသာပြန်ပြီးပါပြီ!")
 
-        # Free User ဖြစ်မှသာ အကြိမ်ရေ တိုးမည်
+        # Free User ဖြစ်မှသာ Database ထဲတွင် အကြိမ်ရေ တိုးပေးမည်
         if not is_vip:
           increment_user_usage(clean_email)
 
         m1, m2, m3 = st.columns(3)
-        m1.metric("📝 စာလုံးရေ (Words)", f"{words:,}")
+        m1.metric("📝 စာသားလုံးရေ (Words)", f"{words:,}")
         m2.metric("🔤 အက္ခရာရေ (Chars)", f"{chars:,}")
         m3.metric("⏱️ ခန့်မှန်းဖတ်ချိန်", f"{est_read_time} မိနစ်")
 
@@ -337,12 +351,11 @@ if st.button("⚡ Script & AI Processing စတင်မည်", type="primary")
 
         with tab1:
           st.subheader("English Script")
-          st.text_area(
-              "English Text",
-              value=full_english_script,
-              height=300,
-              key="en_script_area",
+          st.info(
+              "💡 ညာဘက်အပေါ်ထောင့်ရှိ **Copy icon** ကိုနှိပ်၍ တစ်ချက်တည်း"
+              " ကူးယူနိုင်ပါသည်။"
           )
+          st.code(full_english_script, language="text")
           st.download_button(
               "📥 Download English Script (.txt)",
               data=full_english_script.encode("utf-8-sig"),
@@ -352,12 +365,11 @@ if st.button("⚡ Script & AI Processing စတင်မည်", type="primary")
 
         with tab2:
           st.subheader("မြန်မာ ဘာသာပြန် Script")
-          st.text_area(
-              "Myanmar Text",
-              value=myanmar_translation,
-              height=300,
-              key="my_script_area",
+          st.info(
+              "💡 ညာဘက်အပေါ်ထောင့်ရှိ **Copy icon** ကိုနှိပ်၍ တစ်ချက်တည်း"
+              " ကူးယူနိုင်ပါသည်။"
           )
+          st.code(myanmar_translation, language="text")
           st.download_button(
               "📥 Download မြန်မာ Script (.txt)",
               data=myanmar_translation.encode("utf-8-sig"),
@@ -368,19 +380,9 @@ if st.button("⚡ Script & AI Processing စတင်မည်", type="primary")
         with tab3:
           st.subheader("🤖 AI Script Summary & Story Recap")
           st.write("**English Summary:**")
-          st.text_area(
-              "English Summary Text",
-              value=summary_en,
-              height=150,
-              key="en_sum_area",
-          )
+          st.code(summary_en, language="text")
           st.write("**မြန်မာအနှစ်ချုပ် / ပြန်လည်ဆန်းသစ်ချက်:**")
-          st.text_area(
-              "Myanmar Summary Text",
-              value=summary_my,
-              height=150,
-              key="my_sum_area",
-          )
+          st.code(summary_my, language="text")
 
         with tab4:
           st.subheader("🎬 SRT Subtitle & Myanmar Voiceover (TTS)")
@@ -388,11 +390,8 @@ if st.button("⚡ Script & AI Processing စတင်မည်", type="primary")
 
           with col_sub:
             st.write("📄 **SRT Subtitle File:**")
-            st.text_area(
-                "SRT Preview",
-                value=srt_content[:2000] + "\n[Truncated Preview]",
-                height=200,
-                key="srt_area",
+            st.code(
+                srt_content[:2000] + "\n[Truncated Preview]", language="text"
             )
             st.download_button(
                 "📥 Download Subtitle (.srt)",
@@ -417,4 +416,3 @@ if st.button("⚡ Script & AI Processing စတင်မည်", type="primary")
         st.error(f"❌ အမှားအယွင်း ဖြစ်ပေါ်သွားပါသည်: {str(e)}")
   else:
     st.warning("⚠️ ကျေးဇူးပြု၍ YouTube Link ရိုက်ထည့်ပေးပါ။")
-    
