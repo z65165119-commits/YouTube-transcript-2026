@@ -187,7 +187,6 @@ def safe_chunk_translate(text):
     return ""
   try:
     translator = GoogleTranslator(source="en", target="my")
-    # စာသားအရှည်ကြီးများကို တိကျ ασφαλής (Safe) ဖြစ်စေရန် အပိုင်းငယ်လေးများ (1000 characters ီ) ခွဲမည်
     chunk_size = 1000
     chunks = [text[i : i + chunk_size] for i in range(0, len(text), chunk_size)]
     translated_parts = []
@@ -206,9 +205,7 @@ def safe_chunk_translate(text):
         time.sleep(0.3)
 
       if not success:
-        translated_parts.append(
-            chunk
-        )  # ဘာသာပြန်မရရင် မူရင်းအတိုင်း ထည့်ပေးမည်
+        translated_parts.append(chunk)
       time.sleep(0.3)
 
     return " ".join(translated_parts)
@@ -297,29 +294,32 @@ if st.button("⚡ Script & AI Processing စတင်မည်", type="primary")
           fetched_transcript = fetch_transcript_robust(video_url, video_id)
 
           english_lines = []
-          raw_text_combined = ""
+          pure_texts = []
           for item in fetched_transcript:
             start_str = format_time(item["start"])
             text = item["text"].strip()
-            raw_text_combined += text + " "
+            pure_texts.append(text)
             if show_timestamp:
               english_lines.append(f"[{start_str}] {text}")
             else:
               english_lines.append(text)
 
           full_english_script = "\n".join(english_lines)
+          # ဘာသာပြန်ရန်အတွက် သန့်စင်ပြီးသား စာသားသီးသန့် (Timestamp / Index နံပါတ်များမပါ)
+          pure_raw_text = " ".join(pure_texts)
 
-          words = len(raw_text_combined.split())
-          chars = len(raw_text_combined)
+          words = len(pure_raw_text.split())
+          chars = len(pure_raw_text)
           est_read_time = round(words / 150, 1)
 
         with st.spinner(
             "⏳ မြန်မာဘာသာသို့ အပိုင်းလိုက် တိကျသေချာစွာ ဘာသာပြန်ဆိုနေပါသည်..."
         ):
-          myanmar_translation = safe_chunk_translate(raw_text_combined)
+          # သန့်စင်ထားသော pure_raw_text ကိုသာ ဘာသာပြန်ခိုင်းခြင်းဖြင့် အမှားအယွင်း ကင်းစေမည်
+          myanmar_translation = safe_chunk_translate(pure_raw_text)
           srt_content = generate_srt(fetched_transcript)
 
-          sentences = raw_text_combined.split(". ")
+          sentences = pure_raw_text.split(". ")
           summary_sentences = (
               sentences[:3]
               if summary_length == "Short"
@@ -413,4 +413,4 @@ if st.button("⚡ Script & AI Processing စတင်မည်", type="primary")
         st.error(f"❌ အမှားအယွင်း ဖြစ်ပေါ်သွားပါသည်: {str(e)}")
   else:
     st.warning("⚠️ ကျေးဇူးပြု၍ YouTube Link ရိုက်ထည့်ပေးပါ။")
-        
+          
