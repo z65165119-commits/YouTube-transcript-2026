@@ -182,25 +182,31 @@ def generate_srt(transcript_data):
   return srt_output
 
 
-def chunked_translate(text, chunk_size=800):
+def chunked_translate(text, chunk_size=1500):
   if not text.strip():
     return ""
 
   translator = GoogleTranslator(source="auto", target="my")
-  if len(text) <= chunk_size:
-    try:
-      return translator.translate(text)
-    except Exception:
-      return text
+  
+  # စာကြောင်းများကို ပိုမိုပြည့်စုံစေရန် sentences ဖြင့် ခွဲ၍ ဘာသာပြန်ခြင်း
+  sentences = re.split(r'(?<=[.!?])\s+', text)
+  chunks = []
+  current_chunk = ""
 
-  chunks = [
-      text[i : i + chunk_size] for i in range(0, len(text), chunk_size)
-  ]
+  for sentence in sentences:
+    if len(current_chunk) + len(sentence) < chunk_size:
+      current_chunk += " " + sentence
+    else:
+      if current_chunk:
+        chunks.append(current_chunk.strip())
+      current_chunk = sentence
+  if current_chunk:
+    chunks.append(current_chunk.strip())
+
   translated_chunks = []
-
   for chunk in chunks:
     success = False
-    for attempt in range(2):
+    for attempt in range(3):
       try:
         res = translator.translate(chunk)
         if res:
@@ -209,13 +215,13 @@ def chunked_translate(text, chunk_size=800):
           break
       except Exception:
         pass
-      time.sleep(0.3)
+      time.sleep(0.4)
 
     if not success:
       translated_chunks.append(chunk)
     time.sleep(0.2)
 
-  return " ".join(translated_chunks)
+  return "\n\n".join(translated_chunks)
 
 
 def fetch_transcript_robust(v_url, v_id):
@@ -315,7 +321,7 @@ if st.button("⚡ Script & AI Processing စတင်မည်", type="primary")
           chars = len(raw_text_combined)
           est_read_time = round(words / 150, 1)
 
-        with st.spinner("⏳ မြန်မာဘာသာသို့ ဘာသာပြန်ဆိုနေပါသည်..."):
+        with st.spinner("⏳ မြန်မာဘာသာသို့ အပြည့်အစုံ ဘာသာပြန်ဆိုနေပါသည်..."):
           myanmar_translation = chunked_translate(raw_text_combined)
 
           srt_content = generate_srt(fetched_transcript)
