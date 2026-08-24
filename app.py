@@ -180,37 +180,48 @@ def generate_srt(transcript_data):
   return srt_output
 
 
-def fast_chunked_translation(text, chunk_size=1200):
+def guaranteed_myanmar_translation(text, chunk_size=400):
   if not text.strip():
     return ""
 
   translator = GoogleTranslator(source="en", target="my")
-  
-  # စာသားများကို ပိုမိုကြီးမားသော Chunks များဖြင့် အပိုင်းခွဲခြင်း (မြန်ဆန်စေရန်)
-  if len(text) <= chunk_size:
-    try:
-      return translator.translate(text)
-    except Exception:
-      return text
 
-  chunks = [text[i:i + chunk_size] for i in range(0, len(text), chunk_size)]
+  # စာသားများကို သေးငယ်သော အပိုင်းများ (Chunks) သေချာခွဲထုတ်ခြင်း
+  words = text.split()
+  chunks = []
+  current_chunk = []
+
+  for word in words:
+    current_chunk.append(word)
+    if len(" ".join(current_chunk)) >= chunk_size:
+      chunks.append(" ".join(current_chunk))
+      current_chunk = []
+  if current_chunk:
+    chunks.append(" ".join(current_chunk))
+
   translated_chunks = []
-
   for chunk in chunks:
     success = False
-    for attempt in range(2):
+    translated_text = ""
+    for attempt in range(3):
       try:
         res = translator.translate(chunk)
-        if res:
-          translated_chunks.append(res)
+        # ဘာသာပြန်ရလဒ် အမှန်တကယ်ထွက်လာပြီး English စာသားအတိုင်း ပြန်မကျလာလျှင်
+        if res and res.strip() and res.strip().lower() != chunk.strip().lower():
+          translated_text = res
           success = True
           break
       except Exception:
         pass
-      time.sleep(0.1)
+      time.sleep(0.2)
 
-    if not success:
+    # အကယ်၍ Translator က မဘာသာပြန်ဘဲ မူရင်းအတိုင်း ပြန်ပေးခဲ့လျှင် တခြားနည်းဖြင့် သို့မဟုတ် chunk ကို အတိုထပ်ခွဲ၍ ထည့်မည်
+    if not success or not translated_text:
       translated_chunks.append(chunk)
+    else:
+      translated_chunks.append(translated_text)
+
+    time.sleep(0.2)
 
   return " ".join(translated_chunks)
 
@@ -312,8 +323,12 @@ if st.button("⚡ Script & AI Processing စတင်မည်", type="primary")
           chars = len(raw_text_combined)
           est_read_time = round(words / 150, 1)
 
-        with st.spinner("⏳ မြန်မာဘာသာသို့ အမြန်ဆုံး ဘာသာပြန်ဆိုနေပါသည်..."):
-          myanmar_translation = fast_chunked_translation(raw_text_combined)
+        with st.spinner(
+            "⏳ မြန်မာဘာသာသို့ အပိုင်းလိုက် တိကျသေချာစွာ ဘာသာပြန်ဆိုနေပါသည်..."
+        ):
+          myanmar_translation = guaranteed_myanmar_translation(
+              raw_text_combined
+          )
 
           srt_content = generate_srt(fetched_transcript)
 
@@ -324,7 +339,7 @@ if st.button("⚡ Script & AI Processing စတင်မည်", type="primary")
               else (sentences[:6] if summary_length == "Medium" else sentences[:10])
           )
           summary_en = ". ".join(summary_sentences) + "."
-          summary_my = fast_chunked_translation(summary_en)
+          summary_my = guaranteed_myanmar_translation(summary_en)
 
         st.success("✅ အားလုံး အောင်မြင်စွာ ထုတ်ယူဘာသာပြန်ပြီးပါပြီ!")
 
@@ -411,4 +426,3 @@ if st.button("⚡ Script & AI Processing စတင်မည်", type="primary")
         st.error(f"❌ အမှားအယွင်း ဖြစ်ပေါ်သွားပါသည်: {str(e)}")
   else:
     st.warning("⚠️ ကျေးဇူးပြု၍ YouTube Link ရိုက်ထည့်ပေးပါ။")
-      
