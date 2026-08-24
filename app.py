@@ -60,6 +60,8 @@ def increment_user_usage(email):
 # 🔑 LOGIN SESSION MANAGEMENT
 # ---------------------------------------------------------
 ALLOWED_EMAILS = [
+    "soemoe@gmail.com",
+    "customer1@gmail.com",
     "zlynn7368@gmail.com",
 ]
 
@@ -136,7 +138,6 @@ summary_length = st.sidebar.select_slider(
     value="Medium",
 )
 
-# 🛑 Non-VIP တွေအတွက် ၅ ကြိမ်ပြည့်ရင် ရပ်တန့်မည့် စနစ်
 if not is_vip and current_usage >= FREE_LIMIT:
   st.error("❌ သင့်၏ အခမဲ့ ၅ ကြိမ် အသုံးပြုခွင့် ကုန်ဆုံးသွားပါပြီ။")
   st.warning(
@@ -180,37 +181,72 @@ def generate_srt(transcript_data):
   return srt_output
 
 
-def translate_mymemory(text):
-  """MyMemory Translation API ကို အသုံးပြု၍ မြန်မာလို အမှန်တကယ် ဘာသာပြန်ခြင်း"""
+def translate_safe(text):
+  """သေချာပေါက် မြန်မာဘာသာသို့သာ ပြန်ပေးမည့် ဘာသာပြန်စနစ်"""
   if not text.strip():
     return ""
 
-  # API က စာသားအရှည် အများကြီးဆိုရင် ကန့်သတ်ချက်ရှိ므로 ၄၅၀ စာလုံးစီ အပိုင်းခွဲမည်
-  max_len = 450
-  sentences = [
-      text[i : i + max_len] for i in range(0, len(text), max_len)
+  clean_txt = re.sub(r"\s+", " ", text).strip()
+  max_len = 350
+  chunks = [
+      clean_txt[i : i + max_len] for i in range(0, len(clean_txt), max_len)
   ]
   translated_chunks = []
 
-  for part in sentences:
+  for part in chunks:
+    if not part.strip():
+      continue
+    success = False
+    # ပထမနည်းလမ်း - MyMemory API
     try:
       url = "https://api.mymemory.translated.net/get"
       params = {"q": part, "langpair": "en|my"}
-      response = requests.get(url, params=params, timeout=10)
+      response = requests.get(url, params=params, timeout=6)
       if response.status_code == 200:
         data = response.json()
         translated_text = data.get("responseData", {}).get(
             "translatedText", ""
         )
-        if translated_text and "MYMEMORY WARNING" not in translated_text:
+        if (
+            translated_text
+            and translated_text.strip() != part.strip()
+            and "MYMEMORY WARNING" not in translated_text
+        ):
           translated_chunks.append(translated_text)
-        else:
-          translated_chunks.append(part)
-      else:
-        translated_chunks.append(part)
+          success = True
     except Exception:
-      translated_chunks.append(part)
-    time.sleep(0.3)  # API ကို တောင်းဆိုချိန် ညှိရန်
+      pass
+
+    # အကယ်၍ ပထမနည်း မအောင်မြင်ပါက Google Translate Web endpoint သို့မဟုတ် fallback သုံးမည်
+    if not success:
+      try:
+        g_url = "https://translate.googleapis.com/translate_a/single"
+        g_params = {
+            "client": "gtx",
+            "sl": "en",
+            "tl": "my",
+            "dt": "t",
+            "q": part,
+        }
+        g_res = requests.get(g_url, params=g_params, timeout=6)
+        if g_res.status_code == 200:
+          g_data = g_res.json()
+          g_translated = "".join(
+              [item[0] for item in g_data[0] if item[0]]
+          ).strip()
+          if g_translated:
+            translated_chunks.append(g_translated)
+            success = True
+      except Exception:
+        pass
+
+    if not success:
+      # အလုံးစုံ မအောင်မြင်မှသာ အင်္ဂလိပ်စာကို မြန်မာစာလုံးဖြင့် အကျဉ်းချုပ်ပြမည်
+      translated_chunks.append(
+          "(ဘာသာပြန်ချက် ရှာမတွေ့ပါ - " + part[:50] + "...)"
+      )
+
+    time.sleep(0.3)
 
   return " ".join(translated_chunks)
 
@@ -315,11 +351,9 @@ if st.button("⚡ Script & AI Processing စတင်မည်", type="primary")
           est_read_time = round(words / 150, 1)
 
         with st.spinner(
-            "⏳ မြန်မာဘာသာသို့ အပိုင်းလိုက် ဘာသာပြန်ဆိုနေပါသည် (ခဏစောင့်ပါ)..."
+            "⏳ မြန်မာဘာသာသို့ တိကျမှန်ကန်စွာ ဘာသာပြန်ဆိုနေပါသည်..."
         ):
-          myanmar_translation = translate_mymemory(
-              pure_raw_text[: 4000 * 3]
-          )  # အလွန်ရှည်လျှင် ပထမပိုင်းကို ဦးစားပေးမည်
+          myanmar_translation = translate_safe(pure_raw_text)
           srt_content = generate_srt(fetched_transcript)
 
           sentences = [s.strip() for s in pure_raw_text.split(". ") if s.strip()]
@@ -334,11 +368,10 @@ if st.button("⚡ Script & AI Processing စတင်မည်", type="primary")
               if summary_sentences
               else pure_raw_text[:300]
           )
-          summary_my = translate_mymemory(summary_en)
+          summary_my = translate_safe(summary_en)
 
-        st.success("✅ အားလုံး အောင်မြင်စွာ မြန်မာဘာသာသို့ ပြန်ဆိုပြီးပါပြီ!")
+        st.success("✅ အားလုံး အောင်မြင်စွာ ဆောင်ရွက်ပြီးပါပြီ!")
 
-        # Free User ဖြစ်မှသာ Database ထဲတွင် အကြိမ်ရေ တိုးပေးမည်
         if not is_vip:
           increment_user_usage(clean_email)
 
@@ -349,6 +382,9 @@ if st.button("⚡ Script & AI Processing စတင်မည်", type="primary")
 
         st.markdown("---")
 
+        # ---------------------------------------------------------
+        # 📂 TABS FOR CLEAN SEPARATION
+        # ---------------------------------------------------------
         tab1, tab2, tab3, tab4 = st.tabs([
             "🇬🇧 English Script",
             "🇲🇲 မြန်မာ ဘာသာပြန်",
@@ -362,12 +398,13 @@ if st.button("⚡ Script & AI Processing စတင်မည်", type="primary")
               "💡 ညာဘက်အပေါ်ထောင့်ရှိ **Copy icon** ကိုနှိပ်၍ တစ်ချက်တည်း"
               " ကူးယူနိုင်ပါသည်။"
           )
-          st.code(full_english_script)
+          st.code(full_english_script, height=450)
           st.download_button(
               "📥 Download English Script (.txt)",
               data=full_english_script.encode("utf-8-sig"),
               file_name="english_script.txt",
               mime="text/plain; charset=utf-8",
+              key="dl_en",
           )
 
         with tab2:
@@ -376,20 +413,21 @@ if st.button("⚡ Script & AI Processing စတင်မည်", type="primary")
               "💡 ညာဘက်အပေါ်ထောင့်ရှိ **Copy icon** ကိုနှိပ်၍ တစ်ချက်တည်း"
               " ကူးယူနိုင်ပါသည်။"
           )
-          st.code(myanmar_translation)
+          st.code(myanmar_translation, height=450)
           st.download_button(
               "📥 Download မြန်မာ Script (.txt)",
               data=myanmar_translation.encode("utf-8-sig"),
               file_name="myanmar_script.txt",
               mime="text/plain; charset=utf-8",
+              key="dl_my",
           )
 
         with tab3:
           st.subheader("🤖 AI Script Summary & Story Recap")
           st.write("**English Summary:**")
-          st.code(summary_en)
+          st.code(summary_en, height=180)
           st.write("**မြန်မာအနှစ်ချုပ် / ပြန်လည်ဆန်းသစ်ချက်:**")
-          st.code(summary_my)
+          st.code(summary_my, height=180)
 
         with tab4:
           st.subheader("🎬 SRT Subtitle & Myanmar Voiceover (TTS)")
@@ -397,12 +435,13 @@ if st.button("⚡ Script & AI Processing စတင်မည်", type="primary")
 
           with col_sub:
             st.write("📄 **SRT Subtitle File:**")
-            st.code(srt_content[:2000] + "\n[Truncated Preview]")
+            st.code(srt_content[:1500] + "\n[Truncated Preview]", height=150)
             st.download_button(
                 "📥 Download Subtitle (.srt)",
                 data=srt_content.encode("utf-8-sig"),
                 file_name="subtitle.srt",
                 mime="text/plain; charset=utf-8",
+                key="dl_srt",
             )
 
           with col_audio:
@@ -421,4 +460,4 @@ if st.button("⚡ Script & AI Processing စတင်မည်", type="primary")
         st.error(f"❌ အမှားအယွင်း ဖြစ်ပေါ်သွားပါသည်: {str(e)}")
   else:
     st.warning("⚠️ ကျေးဇူးပြု၍ YouTube Link ရိုက်ထည့်ပေးပါ။")
-                    
+    
