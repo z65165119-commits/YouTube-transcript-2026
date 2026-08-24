@@ -4,6 +4,7 @@ import json
 import os
 import re
 import time
+from deep_translator import GoogleTranslator
 from gtts import gTTS
 import requests
 import streamlit as st
@@ -182,57 +183,40 @@ def generate_srt(transcript_data):
   return srt_output
 
 
-def translate_text_free(text):
-  """Google Translate Public API ကို အသုံးပြု၍ အပိုင်းလိုက် တိကျစွာ ဘာသာပြန်ခြင်း"""
+def translate_to_myanmar_reliable(text):
+  """Deep Translator ကို အသုံးပြု၍ မြန်မာဘာသာသို့ အမှန်တကယ် ဘာသာပြန်ခြင်း"""
   if not text.strip():
     return ""
 
   try:
-    chunk_size = 1000
-    words = text.split(" ")
-    chunks = []
-    current_chunk = []
-    current_length = 0
-
-    for word in words:
-      if current_length + len(word) + 1 < chunk_size:
-        current_chunk.append(word)
-        current_length += len(word) + 1
-      else:
-        chunks.append(" ".join(current_chunk))
-        current_chunk = [word]
-        current_length = len(word) + 1
-    if current_chunk:
-      chunks.append(" ".join(current_chunk))
-
-    translated_full = []
+    translator = GoogleTranslator(source="en", target="my")
+    chunk_size = 4000
+    chunks = [text[i : i + chunk_size] for i in range(0, len(text), chunk_size)]
+    translated_parts = []
 
     for chunk in chunks:
-      url = "https://translate.googleapis.com/translate_a/single"
-      params = {
-          "client": "gtx",
-          "sl": "en",
-          "tl": "my",
-          "dt": "t",
-          "q": chunk,
-      }
-      response = requests.get(url, params=params, timeout=15)
-      if response.status_code == 200:
-        res_json = response.json()
-        if res_json and res_json[0]:
-          translated_chunk = "".join(
-              [sentence[0] for sentence in res_json[0] if sentence[0]]
-          )
-          translated_full.append(translated_chunk)
-      else:
-        translated_full.append(chunk)
+      success = False
+      for attempt in range(3):
+        try:
+          res = translator.translate(chunk)
+          if res and res.strip():
+            translated_parts.append(res)
+            success = True
+            break
+        except Exception:
+          pass
+        time.sleep(0.5)
+
+      if not success:
+        # ဘာသာပြန်မရခဲ့ရင်တောင် error မတက်စေဘဲ ဆက်သွားရန်
+        translated_parts.append(
+            "[ဘာသာပြန်ချက် ရယူ၍မရပါ - မူရင်းစာသား]" + chunk
+        )
       time.sleep(0.3)
 
-    return "\n".join(translated_full)
+    return " ".join(translated_parts)
   except Exception as e:
-    return (
-        f"ဘာသာပြန်ဆိုရာတွင် အခက်အခဲရှိပါသည်။ (အသေးစိတ်အချက်အလက်: {str(e)})"
-    )
+    return f"ဘာသာပြန်ဆိုရာတွင် အခက်အခဲရှိပါသည်။ ({str(e)})"
 
 
 def fetch_transcript_robust(v_url, v_id):
@@ -335,9 +319,9 @@ if st.button("⚡ Script & AI Processing စတင်မည်", type="primary")
           est_read_time = round(words / 150, 1)
 
         with st.spinner(
-            "⏳ မြန်မာဘာသာသို့ Google Translate ဖြင့် တိကျသေချာစွာ ဘာသာပြန်ဆိုနေပါသည်..."
+            "⏳ မြန်မာဘာသာသို့ အမှန်တကယ် ဘာသာပြန်ဆိုနေပါသည် (ခဏစောင့်ပါ)..."
         ):
-          myanmar_translation = translate_text_free(pure_raw_text)
+          myanmar_translation = translate_to_myanmar_reliable(pure_raw_text)
           srt_content = generate_srt(fetched_transcript)
 
           sentences = [s.strip() for s in pure_raw_text.split(". ") if s.strip()]
@@ -352,10 +336,11 @@ if st.button("⚡ Script & AI Processing စတင်မည်", type="primary")
               if summary_sentences
               else pure_raw_text[:300]
           )
-          summary_my = translate_text_free(summary_en)
+          summary_my = translate_to_myanmar_reliable(summary_en)
 
-        st.success("✅ အားလုံး အောင်မြင်စွာ ထုတ်ယူဘာသာပြန်ပြီးပါပြီ!")
+        st.success("✅ အားလုံး အောင်မြင်စွာ မြန်မာဘာသာသို့ ပြန်ဆိုပြီးပါပြီ!")
 
+        # Free User ဖြစ်မှသာ Database ထဲတွင် အကြိမ်ရေ တိုးပေးမည်
         if not is_vip:
           increment_user_usage(clean_email)
 
@@ -438,3 +423,4 @@ if st.button("⚡ Script & AI Processing စတင်မည်", type="primary")
         st.error(f"❌ အမှားအယွင်း ဖြစ်ပေါ်သွားပါသည်: {str(e)}")
   else:
     st.warning("⚠️ ကျေးဇူးပြု၍ YouTube Link ရိုက်ထည့်ပေးပါ။")
+        
