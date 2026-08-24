@@ -178,37 +178,21 @@ def generate_srt(transcript_data):
   return srt_output
 
 
-def translate_to_myanmar(text):
-  """Google Translate API (Stable) ကို အသုံးပြု၍ မြန်မာသို့ တိုက်ရိုက်ဘာသာပြန်ခြင်း"""
+def translate_single_line(text):
+  """တစ်ကြောင်းချင်းစီကို တိကျစွာ မြန်မာဘာသာပြန်ပေးသော လုပ်ဆောင်ချက်"""
   if not text.strip():
     return ""
-
-  clean_txt = re.sub(r"\s+", " ", text).strip()
-  max_len = 450
-  chunks = [
-      clean_txt[i : i + max_len] for i in range(0, len(clean_txt), max_len)
-  ]
-  myanmar_chunks = []
-
-  for part in chunks:
-    if not part.strip():
-      continue
-    try:
-      fallback_url = "https://translate.googleapis.com/translate_a/single"
-      params = {"client": "gtx", "sl": "en", "tl": "my", "dt": "t", "q": part}
-      res = requests.get(fallback_url, params=params, timeout=5)
-      if res.status_code == 200:
-        data = res.json()
-        translated = "".join([item[0] for item in data[0] if item[0]]).strip()
-        myanmar_chunks.append(translated if translated else part)
-      else:
-        myanmar_chunks.append(part)
-    except Exception:
-      myanmar_chunks.append(part)
-
-    time.sleep(0.1)
-
-  return " ".join(myanmar_chunks)
+  try:
+    fallback_url = "https://translate.googleapis.com/translate_a/single"
+    params = {"client": "gtx", "sl": "en", "tl": "my", "dt": "t", "q": text}
+    res = requests.get(fallback_url, params=params, timeout=5)
+    if res.status_code == 200:
+      data = res.json()
+      translated = "".join([item[0] for item in data[0] if item[0]]).strip()
+      return translated if translated else text
+  except Exception:
+    pass
+  return text
 
 
 def fetch_transcript_robust(v_url, v_id):
@@ -290,20 +274,30 @@ if st.button("⚡ Script & AI Processing စတင်မည်", type="primary")
           fetched_transcript = fetch_transcript_robust(video_url, video_id)
 
           english_lines = []
+          myanmar_lines = []
           pure_texts = []
+
           for item in fetched_transcript:
             start_str = format_time(item["start"])
             text = item["text"].strip()
             clean_t = re.sub(r"^\d+\.?\s*", "", text)
+
             if clean_t:
               pure_texts.append(clean_t)
+              # တစ်ကြောင်းချင်းစီ ဘာသာပြန်မည်
+              my_trans_line = translate_single_line(clean_t)
 
-            if show_timestamp:
-              english_lines.append(f"[{start_str}] {text}")
-            else:
-              english_lines.append(text)
+              if show_timestamp:
+                english_lines.append(f"[{start_str}] {text}")
+                myanmar_lines.append(f"[{start_str}] {my_trans_line}")
+              else:
+                english_lines.append(text)
+                myanmar_lines.append(my_trans_line)
+
+            time.sleep(0.05)  # API Rate limit မမိအောင် ခဏစောင့်မည်
 
           full_english_script = "\n".join(english_lines)
+          full_myanmar_script = "\n".join(myanmar_lines)
           pure_raw_text = " ".join(pure_texts)
 
           words = len(pure_raw_text.split())
@@ -311,9 +305,8 @@ if st.button("⚡ Script & AI Processing စတင်မည်", type="primary")
           est_read_time = round(words / 150, 1)
 
         with st.spinner(
-            "⏳ မြန်မာဘာသာသို့ တိကျမှန်ကန်စွာ ဘာသာပြန်ဆိုနေပါသည်..."
+            "⏳ အနှစ်ချုပ်များနှင့် SRT ဖိုင်များကို ဖန်တီးနေပါသည်..."
         ):
-          myanmar_translation = translate_to_myanmar(pure_raw_text)
           srt_content = generate_srt(fetched_transcript)
 
           sentences = [s.strip() for s in pure_raw_text.split(". ") if s.strip()]
@@ -328,7 +321,7 @@ if st.button("⚡ Script & AI Processing စတင်မည်", type="primary")
               if summary_sentences
               else pure_raw_text[:300]
           )
-          summary_my = translate_to_myanmar(summary_en)
+          summary_my = translate_single_line(summary_en)
 
         st.success("✅ အားလုံး အောင်မြင်စွာ ဆောင်ရွက်ပြီးပါပြီ!")
 
@@ -373,10 +366,10 @@ if st.button("⚡ Script & AI Processing စတင်မည်", type="primary")
               "💡 ညာဘက်အပေါ်ထောင့်ရှိ **Copy icon** ကိုနှိပ်၍ တစ်ချက်တည်း"
               " ကူးယူနိုင်ပါသည်။"
           )
-          st.code(myanmar_translation, height=450)
+          st.code(full_myanmar_script, height=450)
           st.download_button(
               "📥 Download မြန်မာ Script (.txt)",
-              data=myanmar_translation.encode("utf-8-sig"),
+              data=full_myanmar_script.encode("utf-8-sig"),
               file_name="myanmar_script.txt",
               mime="text/plain; charset=utf-8",
               key="dl_my",
@@ -420,4 +413,4 @@ if st.button("⚡ Script & AI Processing စတင်မည်", type="primary")
         st.error(f"❌ အမှားအယွင်း ဖြစ်ပေါ်သွားပါသည်: {str(e)}")
   else:
     st.warning("⚠️ ကျေးဇူးပြု၍ YouTube Link ရိုက်ထည့်ပေးပါ။")
-          
+      
