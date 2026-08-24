@@ -196,7 +196,7 @@ def safe_chunk_translate(text):
       for attempt in range(3):
         try:
           res = translator.translate(chunk)
-          if res and res.strip():
+          if res and res.strip() and res.strip() != chunk.strip():
             translated_parts.append(res)
             success = True
             break
@@ -205,6 +205,7 @@ def safe_chunk_translate(text):
         time.sleep(0.3)
 
       if not success:
+        # ဘာသာပြန်မရရင်တောင် နောက်ဆုံးနည်းအနေနဲ့ စာသားကို သန့်စင်ပြီး ထည့်မည်
         translated_parts.append(chunk)
       time.sleep(0.3)
 
@@ -298,14 +299,17 @@ if st.button("⚡ Script & AI Processing စတင်မည်", type="primary")
           for item in fetched_transcript:
             start_str = format_time(item["start"])
             text = item["text"].strip()
-            pure_texts.append(text)
+            # အက္ခရာနံပါတ် သို့မဟုတ် index နံပါတ်များ ပါဝင်နေပါက ဖယ်ထုတ်ရန်
+            clean_t = re.sub(r"^\d+\.?\s*", "", text)
+            if clean_t:
+              pure_texts.append(clean_t)
+
             if show_timestamp:
               english_lines.append(f"[{start_str}] {text}")
             else:
               english_lines.append(text)
 
           full_english_script = "\n".join(english_lines)
-          # ဘာသာပြန်ရန်အတွက် သန့်စင်ပြီးသား စာသားသီးသန့် (Timestamp / Index နံပါတ်များမပါ)
           pure_raw_text = " ".join(pure_texts)
 
           words = len(pure_raw_text.split())
@@ -315,17 +319,17 @@ if st.button("⚡ Script & AI Processing စတင်မည်", type="primary")
         with st.spinner(
             "⏳ မြန်မာဘာသာသို့ အပိုင်းလိုက် တိကျသေချာစွာ ဘာသာပြန်ဆိုနေပါသည်..."
         ):
-          # သန့်စင်ထားသော pure_raw_text ကိုသာ ဘာသာပြန်ခိုင်းခြင်းဖြင့် အမှားအယွင်း ကင်းစေမည်
           myanmar_translation = safe_chunk_translate(pure_raw_text)
           srt_content = generate_srt(fetched_transcript)
 
-          sentences = pure_raw_text.split(". ")
-          summary_sentences = (
-              sentences[:3]
+          sentences = [s.strip() for s in pure_raw_text.split(". ") if s.strip()]
+          summary_count = (
+              3
               if summary_length == "Short"
-              else (sentences[:6] if summary_length == "Medium" else sentences[:10])
+              else (6 if summary_length == "Medium" else 10)
           )
-          summary_en = ". ".join(summary_sentences) + "."
+          summary_sentences = sentences[:summary_count]
+          summary_en = ". ".join(summary_sentences) + "." if summary_sentences else pure_raw_text[:300]
           summary_my = safe_chunk_translate(summary_en)
 
         st.success("✅ အားလုံး အောင်မြင်စွာ ထုတ်ယူဘာသာပြန်ပြီးပါပြီ!")
@@ -413,4 +417,4 @@ if st.button("⚡ Script & AI Processing စတင်မည်", type="primary")
         st.error(f"❌ အမှားအယွင်း ဖြစ်ပေါ်သွားပါသည်: {str(e)}")
   else:
     st.warning("⚠️ ကျေးဇူးပြု၍ YouTube Link ရိုက်ထည့်ပေးပါ။")
-          
+    
