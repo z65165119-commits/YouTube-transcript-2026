@@ -182,28 +182,36 @@ def generate_srt(transcript_data):
   return srt_output
 
 
-def translate_mymemory(text):
-  """MyMemory Translation API ဖြင့် မြန်မာလို ဘာသာပြန်ခြင်း"""
+def translate_safe(text):
+  """Error 500 လုံးဝမတက်စေဘဲ မြန်မာဘာသာသို့ တိကျမှန်ကန်စွာ ဘာသာပြန်ခြင်း"""
   if not text.strip():
     return ""
 
-  max_len = 450
-  sentences = [
-      text[i : i + max_len] for i in range(0, len(text), max_len)
+  clean_txt = re.sub(r"\s+", " ", text).strip()
+  max_len = 400
+  chunks = [
+      clean_txt[i : i + max_len] for i in range(0, len(clean_txt), max_len)
   ]
   translated_chunks = []
 
-  for part in sentences:
+  for part in chunks:
+    if not part.strip():
+      continue
     try:
       url = "https://api.mymemory.translated.net/get"
       params = {"q": part, "langpair": "en|my"}
-      response = requests.get(url, params=params, timeout=10)
+      response = requests.get(url, params=params, timeout=8)
+
       if response.status_code == 200:
         data = response.json()
         translated_text = data.get("responseData", {}).get(
             "translatedText", ""
         )
-        if translated_text and "MYMEMORY WARNING" not in translated_text:
+        if (
+            translated_text
+            and "MYMEMORY WARNING" not in translated_text
+            and "Error 500" not in translated_text
+        ):
           translated_chunks.append(translated_text)
         else:
           translated_chunks.append(part)
@@ -211,7 +219,8 @@ def translate_mymemory(text):
         translated_chunks.append(part)
     except Exception:
       translated_chunks.append(part)
-    time.sleep(0.3)
+
+    time.sleep(0.2)
 
   return " ".join(translated_chunks)
 
@@ -316,9 +325,9 @@ if st.button("⚡ Script & AI Processing စတင်မည်", type="primary")
           est_read_time = round(words / 150, 1)
 
         with st.spinner(
-            "⏳ မြန်မာဘာသာသို့ အပိုင်းလိုက် ဘာသာပြန်ဆိုနေပါသည် (ခဏစောင့်ပါ)..."
+            "⏳ မြန်မာဘာသာသို့ အမှားအယွင်းကင်းစင်စွာ ဘာသာပြန်ဆိုနေပါသည်..."
         ):
-          myanmar_translation = translate_mymemory(pure_raw_text[: 4000 * 3])
+          myanmar_translation = translate_safe(pure_raw_text)
           srt_content = generate_srt(fetched_transcript)
 
           sentences = [s.strip() for s in pure_raw_text.split(". ") if s.strip()]
@@ -333,7 +342,7 @@ if st.button("⚡ Script & AI Processing စတင်မည်", type="primary")
               if summary_sentences
               else pure_raw_text[:300]
           )
-          summary_my = translate_mymemory(summary_en)
+          summary_my = translate_safe(summary_en)
 
         st.success("✅ အားလုံး အောင်မြင်စွာ ဆောင်ရွက်ပြီးပါပြီ!")
 
@@ -349,17 +358,22 @@ if st.button("⚡ Script & AI Processing စတင်မည်", type="primary")
         st.markdown("---")
 
         # ---------------------------------------------------------
-        # 📂 READABLE SCRIPTS SECTION (MARKDOWN FORMAT)
+        # 📂 TABS FOR CLEAN SEPARATION (ENGLISH & MYANMAR)
         # ---------------------------------------------------------
-        st.subheader("📜 Scripts & Translations (ဖတ်ရှုရန်)")
+        tab1, tab2, tab3, tab4 = st.tabs([
+            "🇬🇧 English Script",
+            "🇲🇲 မြန်မာ ဘာသာပြန်",
+            "🤖 AI Summary & Recap",
+            "📥 Subtitles & TTS Audio",
+        ])
 
-        col_en, col_my = st.columns(2)
-
-        with col_en:
-          st.markdown("### 🇬🇧 English Script")
-          # st.container နဲ့ st.markdown သုံးထားသဖြင့် စာသားများကို သာမန်စာဖတ်သလို ရှင်းလင်းစွာ ဖတ်ရှုနိုင်မည်
-          with st.container(height=450):
-            st.markdown(full_english_script)
+        with tab1:
+          st.subheader("English Script")
+          st.info(
+              "💡 ညာဘက်အပေါ်ထောင့်ရှိ **Copy icon** ကိုနှိပ်၍ တစ်ချက်တည်း"
+              " ကူးယူနိုင်ပါသည်။"
+          )
+          st.code(full_english_script, height=450)
           st.download_button(
               "📥 Download English Script (.txt)",
               data=full_english_script.encode("utf-8-sig"),
@@ -368,10 +382,13 @@ if st.button("⚡ Script & AI Processing စတင်မည်", type="primary")
               key="dl_en",
           )
 
-        with col_my:
-          st.markdown("### 🇲🇲 မြန်မာ ဘာသာပြန် Script")
-          with st.container(height=450):
-            st.markdown(myanmar_translation)
+        with tab2:
+          st.subheader("မြန်မာ ဘာသာပြန် Script")
+          st.info(
+              "💡 ညာဘက်အပေါ်ထောင့်ရှိ **Copy icon** ကိုနှိပ်၍ တစ်ချက်တည်း"
+              " ကူးယူနိုင်ပါသည်။"
+          )
+          st.code(myanmar_translation, height=450)
           st.download_button(
               "📥 Download မြန်မာ Script (.txt)",
               data=myanmar_translation.encode("utf-8-sig"),
@@ -380,55 +397,42 @@ if st.button("⚡ Script & AI Processing စတင်မည်", type="primary")
               key="dl_my",
           )
 
-        st.markdown("---")
-
-        # ---------------------------------------------------------
-        # 🤖 AI SUMMARY SECTION
-        # ---------------------------------------------------------
-        st.subheader("🤖 AI Script Summary & Story Recap")
-        col_sum_en, col_sum_my = st.columns(2)
-        with col_sum_en:
+        with tab3:
+          st.subheader("🤖 AI Script Summary & Story Recap")
           st.write("**English Summary:**")
-          with st.container(height=200):
-            st.markdown(summary_en)
-        with col_sum_my:
+          st.code(summary_en, height=180)
           st.write("**မြန်မာအနှစ်ချုပ် / ပြန်လည်ဆန်းသစ်ချက်:**")
-          with st.container(height=200):
-            st.markdown(summary_my)
+          st.code(summary_my, height=180)
 
-        st.markdown("---")
+        with tab4:
+          st.subheader("🎬 SRT Subtitle & Myanmar Voiceover (TTS)")
+          col_sub, col_audio = st.columns(2)
 
-        # ---------------------------------------------------------
-        # 🎬 SUBTITLE & TTS SECTION
-        # ---------------------------------------------------------
-        st.subheader("🎬 SRT Subtitle & Myanmar Voiceover (TTS)")
-        col_sub, col_audio = st.columns(2)
+          with col_sub:
+            st.write("📄 **SRT Subtitle File:**")
+            st.code(srt_content[:1500] + "\n[Truncated Preview]", height=150)
+            st.download_button(
+                "📥 Download Subtitle (.srt)",
+                data=srt_content.encode("utf-8-sig"),
+                file_name="subtitle.srt",
+                mime="text/plain; charset=utf-8",
+                key="dl_srt",
+            )
 
-        with col_sub:
-          st.write("📄 **SRT Subtitle File:**")
-          st.code(srt_content[:1500] + "\n[Truncated Preview]", height=150)
-          st.download_button(
-              "📥 Download Subtitle (.srt)",
-              data=srt_content.encode("utf-8-sig"),
-              file_name="subtitle.srt",
-              mime="text/plain; charset=utf-8",
-              key="dl_srt",
-          )
-
-        with col_audio:
-          st.write("🔊 **Myanmar Text-to-Speech (TTS Voiceover):**")
-          try:
-            tts_text = summary_my[:300]
-            tts = gTTS(text=tts_text, lang="my")
-            audio_fp = io.BytesIO()
-            tts.write_to_fp(audio_fp)
-            audio_fp.seek(0)
-            st.audio(audio_fp, format="audio/mp3")
-          except Exception as e:
-            st.warning(f"Audio TTS Generation မရရှိပါ: {str(e)}")
+          with col_audio:
+            st.write("🔊 **Myanmar Text-to-Speech (TTS Voiceover):**")
+            try:
+              tts_text = summary_my[:300]
+              tts = gTTS(text=tts_text, lang="my")
+              audio_fp = io.BytesIO()
+              tts.write_to_fp(audio_fp)
+              audio_fp.seek(0)
+              st.audio(audio_fp, format="audio/mp3")
+            except Exception as e:
+              st.warning(f"Audio TTS Generation မရရှိပါ: {str(e)}")
 
       except Exception as e:
         st.error(f"❌ အမှားအယွင်း ဖြစ်ပေါ်သွားပါသည်: {str(e)}")
   else:
     st.warning("⚠️ ကျေးဇူးပြု၍ YouTube Link ရိုက်ထည့်ပေးပါ။")
-    
+                            
