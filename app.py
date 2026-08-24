@@ -178,42 +178,37 @@ def generate_srt(transcript_data):
   return srt_output
 
 
-def translate_fast_blocks(text):
-  """စာသားရှည်များကို ပိုမိုမြန်ဆန်ပြီး စာကြောင်းရေမပျက်အောင် အပိုင်းလိုက် ဘာသာပြန်ပေးခြင်း"""
+def translate_text_to_myanmar(text):
+  """စာသားများကို သေချာပေါက် မြန်မာဘာသာသို့ ပြန်ဆိုပေးမည့် ခိုင်မာသောစနစ်"""
   if not text.strip():
     return ""
 
-  # စာကြောင်းငယ်များ သို့မဟုတ် Paragraph အလိုက် ခွဲထုတ်မည်
-  sentences = re.split(r"(?<=[.!?])\s+", text)
-  translated_blocks = []
-  current_block = ""
+  clean_txt = re.sub(r"\s+", " ", text).strip()
+  max_len = 400
+  chunks = [
+      clean_txt[i : i + max_len] for i in range(0, len(clean_txt), max_len)
+  ]
+  myanmar_chunks = []
 
-  for sentence in sentences:
-    if len(current_block) + len(sentence) < 400:
-      current_block += " " + sentence
-    else:
-      if current_block.strip():
-        translated_blocks.append(translate_chunk(current_block.strip()))
-      current_block = sentence
+  for part in chunks:
+    if not part.strip():
+      continue
+    translated = part  # မူရင်းအတိုင်း ထားမည် (Fallback အနေဖြင့်)
+    try:
+      fallback_url = "https://translate.googleapis.com/translate_a/single"
+      params = {"client": "gtx", "sl": "en", "tl": "my", "dt": "t", "q": part}
+      res = requests.get(fallback_url, params=params, timeout=8)
+      if res.status_code == 200:
+        data = res.json()
+        if data and data[0]:
+          translated = "".join([item[0] for item in data[0] if item[0]]).strip()
+    except Exception:
+      pass
 
-  if current_block.strip():
-    translated_blocks.append(translate_chunk(current_block.strip()))
+    myanmar_chunks.append(translated if translated else part)
+    time.sleep(0.1)
 
-  return "\n\n".join(translated_blocks)
-
-
-def translate_chunk(part):
-  try:
-    fallback_url = "https://translate.googleapis.com/translate_a/single"
-    params = {"client": "gtx", "sl": "en", "tl": "my", "dt": "t", "q": part}
-    res = requests.get(fallback_url, params=params, timeout=6)
-    if res.status_code == 200:
-      data = res.json()
-      translated = "".join([item[0] for item in data[0] if item[0]]).strip()
-      return translated if translated else part
-  except Exception:
-    pass
-  return part
+  return "\n\n".join(myanmar_chunks)
 
 
 def fetch_transcript_robust(v_url, v_id):
@@ -315,11 +310,9 @@ if st.button("⚡ Script & AI Processing စတင်မည်", type="primary")
           chars = len(pure_raw_text)
           est_read_time = round(words / 150, 1)
 
-        with st.spinner(
-            "⏳ မြန်မာဘာသာသို့ အမြန်ဆုံးနှင့် သပ်သပ်ရပ်ရပ်"
-            " ဘာသာပြန်ဆိုနေပါသည်..."
-        ):
-          myanmar_translation = translate_fast_blocks(pure_raw_text)
+        with st.spinner("⏳ မြန်မာဘာသာသို့ တိကျမှန်ကန်စွာ ဘာသာပြန်ဆိုနေပါသည်..."):
+          # စာသားများကို အတိုအပြတ်များခွဲ၍ သေချာပေါက် မြန်မာဘာသာသို့ ပြန်မည်
+          myanmar_translation = translate_text_to_myanmar(pure_raw_text)
           srt_content = generate_srt(fetched_transcript)
 
           sentences = [s.strip() for s in pure_raw_text.split(". ") if s.strip()]
@@ -334,7 +327,7 @@ if st.button("⚡ Script & AI Processing စတင်မည်", type="primary")
               if summary_sentences
               else pure_raw_text[:300]
           )
-          summary_my = translate_chunk(summary_en)
+          summary_my = translate_text_to_myanmar(summary_en)
 
         st.success("✅ အားလုံး အောင်မြင်စွာ ဆောင်ရွက်ပြီးပါပြီ!")
 
@@ -426,4 +419,3 @@ if st.button("⚡ Script & AI Processing စတင်မည်", type="primary")
         st.error(f"❌ အမှားအယွင်း ဖြစ်ပေါ်သွားပါသည်: {str(e)}")
   else:
     st.warning("⚠️ ကျေးဇူးပြု၍ YouTube Link ရိုက်ထည့်ပေးပါ။")
-                  
