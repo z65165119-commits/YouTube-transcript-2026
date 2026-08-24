@@ -135,7 +135,7 @@ summary_length = st.sidebar.select_slider(
     value="Medium",
 )
 
-# 🛑 Non-VIP တွေအတွက် ၅ ကြိမ်ပြည့်ရင် ရပ်တန့်မည့် စနစ် (Corrected Logic)
+# 🛑 Non-VIP တွေအတွက် ၅ ကြိမ်ပြည့်ရင် ရပ်တန့်မည့် စနစ်
 if not is_vip and current_usage >= FREE_LIMIT:
   st.error("❌ သင့်၏ အခမဲ့ ၅ ကြိမ် အသုံးပြုခွင့် ကုန်ဆုံးသွားပါပြီ။")
   st.warning(
@@ -178,8 +178,11 @@ def generate_srt(transcript_data):
   return srt_output
 
 
-# 🛡️ ULTRA-SAFE TRANSLATION FUNCTION (Error 500 မတက်အောင် အပိုင်းသေးခွဲပြီးသား)
-def chunked_translate(text, chunk_size=1000):
+# 🛡️ SAFE TRANSLATION FUNCTION (Error 500 မတက်အောင်နှင့် လုံးဝဆိုင်းမနေစေရန်)
+def chunked_translate(text, chunk_size=800):
+  if not text.strip():
+    return ""
+  
   translator = GoogleTranslator(source="auto", target="my")
   if len(text) <= chunk_size:
     try:
@@ -194,70 +197,79 @@ def chunked_translate(text, chunk_size=1000):
   
   for chunk in chunks:
     success = False
-    for attempt in range(3):
+    for attempt in range(2):  # ၂ ကြိမ်သာ ထပ်ကြိုးစားမည် (Infinite loop မဖြစ်စေရန်)
       try:
         res = translator.translate(chunk)
-        if res and "Error 500" not in res:
+        if res:
           translated_chunks.append(res)
           success = True
           break
       except Exception:
         pass
-      time.sleep(1)
+      time.sleep(0.3)
     
     if not success:
       translated_chunks.append(chunk)
-    time.sleep(0.5)
+    time.sleep(0.2)
 
   return " ".join(translated_chunks)
 
 
 def fetch_transcript_robust(v_url, v_id):
+  # ပထမနည်းလမ်း - YouTube Transcript API ကို သုံးခြင်း
   try:
-    return YouTubeTranscriptApi.get_transcript(
-        v_id, languages=["en", "en-US", "my"]
-    )
+    tx = YouTubeTranscriptApi.get_transcript(v_id, languages=["en", "en-US", "my", "auto"])
+    if tx:
+      return tx
   except Exception:
     pass
 
+  # ဒုတိယနည်းလမ်း - yt_dlp ဖြင့် Subtitles ထုတ်ယူခြင်း
   ydl_opts = {
       "skip_download": True,
       "writesubtitles": True,
       "writeautomaticsub": True,
-      "subtitleslangs": ["en", "my"],
+      "subtitleslangs": ["en", "my", "en-US"],
       "quiet": True,
   }
 
-  with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-    info = ydl.extract_info(v_url, download=False)
-    subtitles = info.get("subtitles") or info.get("automatic_captions")
+  try:
+    with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+      info = ydl.extract_info(v_url, download=False)
+      subtitles = info.get("subtitles") or info.get("automatic_captions")
 
-    if not subtitles:
-      raise Exception("No transcript or subtitles found.")
+      if subtitles:
+        lang = None
+        for l in ["en", "en-US", "my"]:
+          if l in subtitles:
+            lang = l
+            break
+        if not lang:
+          lang = list(subtitles.keys())[0]
 
-    lang = "en" if "en" in subtitles else list(subtitles.keys())[0]
-    sub_data = subtitles[lang]
+        sub_data = subtitles[lang]
+        import requests
+        json_url = next(
+            (s["url"] for s in sub_data if s.get("ext") == "json3" or "json" in s.get("ext", "")), None
+        )
+        if json_url:
+          res = requests.get(json_url, timeout=10).json()
+          parsed_transcript = []
+          for event in res.get("events", []):
+            if "segs" in event:
+              text = "".join([s.get("utf8", "") for s in event["segs"]]).strip()
+              if text and text != "\n":
+                start = event.get("tStartMs", 0) / 1000.0
+                dur = event.get("dDurationMs", 0) / 1000.0
+                parsed_transcript.append(
+                    {"text": text, "start": start, "duration": dur}
+                )
+          if parsed_transcript:
+            return parsed_transcript
+  except Exception:
+    pass
 
-    import requests
-
-    json_url = next(
-        (s["url"] for s in sub_data if s.get("ext") == "json3"), None
-    )
-    if json_url:
-      res = requests.get(json_url).json()
-      parsed_transcript = []
-      for event in res.get("events", []):
-        if "segs" in event:
-          text = "".join([s.get("utf8", "") for s in event["segs"]]).strip()
-          if text and text != "\n":
-            start = event.get("tStartMs", 0) / 1000.0
-            dur = event.get("dDurationMs", 0) / 1000.0
-            parsed_transcript.append(
-                {"text": text, "start": start, "duration": dur}
-            )
-      return parsed_transcript
-
-  raise Exception("Could not extract transcript.")
+  raise Exception("ဒီဗီဒီယိုတွင် YouTube Transcript (သို့) Subtitles လုံးဝ မရှိပါ (သို့မဟုတ် YouTube မှ တားမြစ်ထားပါသည်)။")
 
 
 if st.button("⚡ Script & AI Processing စတင်မည်", type="primary"):
@@ -269,9 +281,7 @@ if st.button("⚡ Script & AI Processing စတင်မည်", type="primary")
       try:
         st.video(video_url)
 
-        with st.spinner(
-            "⏳ Transcript နှင့် AI Data များကို အပိုင်းခွဲ၍ ဘာသာပြန်နေပါသည်..."
-        ):
+        with st.spinner("⏳ Transcript နှင့် AI Data များကို ထုတ်ယူနေပါသည်..."):
           fetched_transcript = fetch_transcript_robust(video_url, video_id)
 
           english_lines = []
@@ -291,7 +301,9 @@ if st.button("⚡ Script & AI Processing စတင်မည်", type="primary")
           chars = len(raw_text_combined)
           est_read_time = round(words / 150, 1)
 
+        with st.spinner("⏳ မြန်မာဘာသာသို့ ဘာသာပြန်ဆိုနေပါသည်..."):
           myanmar_translation = chunked_translate(raw_text_combined)
+
           srt_content = generate_srt(fetched_transcript)
 
           sentences = raw_text_combined.split(". ")
@@ -303,106 +315,106 @@ if st.button("⚡ Script & AI Processing စတင်မည်", type="primary")
           summary_en = ". ".join(summary_sentences) + "."
           summary_my = chunked_translate(summary_en)
 
-          st.success("✅ အားလုံး အောင်မြင်စွာ ထုတ်ယူဘာသာပြန်ပြီးပါပြီ!")
+        st.success("✅ အားလုံး အောင်မြင်စွာ ထုတ်ယူဘာသာပြန်ပြီးပါပြီ!")
 
-          # Free User ဖြစ်မှသာ အကြိမ်ရေ တိုးမည် (VIP ဆိုရင် မတိုးပါ)
-          if not is_vip:
-            increment_user_usage(clean_email)
+        # Free User ဖြစ်မှသာ အကြိမ်ရေ တိုးမည်
+        if not is_vip:
+          increment_user_usage(clean_email)
 
-          m1, m2, m3 = st.columns(3)
-          m1.metric("📝 စာလုံးရေ (Words)", f"{words:,}")
-          m2.metric("🔤 အက္ခရာရေ (Chars)", f"{chars:,}")
-          m3.metric("⏱️ ခန့်မှန်းဖတ်ချိန်", f"{est_read_time} မိနစ်")
+        m1, m2, m3 = st.columns(3)
+        m1.metric("📝 စာလုံးရေ (Words)", f"{words:,}")
+        m2.metric("🔤 အက္ခရာရေ (Chars)", f"{chars:,}")
+        m3.metric("⏱️ ခန့်မှန်းဖတ်ချိန်", f"{est_read_time} မိနစ်")
 
-          st.markdown("---")
+        st.markdown("---")
 
-          tab1, tab2, tab3, tab4 = st.tabs([
-              "🇬🇧 English Script",
-              "🇲🇲 မြန်မာ ဘာသာပြန်",
-              "🤖 AI Summary & Recap",
-              "📥 Subtitles & TTS Audio",
-          ])
+        tab1, tab2, tab3, tab4 = st.tabs([
+            "🇬🇧 English Script",
+            "🇲🇲 မြန်မာ ဘာသာပြန်",
+            "🤖 AI Summary & Recap",
+            "📥 Subtitles & TTS Audio",
+        ])
 
-          with tab1:
-            st.subheader("English Script")
+        with tab1:
+          st.subheader("English Script")
+          st.text_area(
+              "English Text",
+              value=full_english_script,
+              height=300,
+              key="en_script_area",
+          )
+          st.download_button(
+              "📥 Download English Script (.txt)",
+              data=full_english_script.encode("utf-8-sig"),
+              file_name="english_script.txt",
+              mime="text/plain; charset=utf-8",
+          )
+
+        with tab2:
+          st.subheader("မြန်မာ ဘာသာပြန် Script")
+          st.text_area(
+              "Myanmar Text",
+              value=myanmar_translation,
+              height=300,
+              key="my_script_area",
+          )
+          st.download_button(
+              "📥 Download မြန်မာ Script (.txt)",
+              data=myanmar_translation.encode("utf-8-sig"),
+              file_name="myanmar_script.txt",
+              mime="text/plain; charset=utf-8",
+          )
+
+        with tab3:
+          st.subheader("🤖 AI Script Summary & Story Recap")
+          st.write("**English Summary:**")
+          st.text_area(
+              "English Summary Text",
+              value=summary_en,
+              height=150,
+              key="en_sum_area",
+          )
+          st.write("**မြန်မာအနှစ်ချုပ် / ပြန်လည်ဆန်းသစ်ချက်:**")
+          st.text_area(
+              "Myanmar Summary Text",
+              value=summary_my,
+              height=150,
+              key="my_sum_area",
+          )
+
+        with tab4:
+          st.subheader("🎬 SRT Subtitle & Myanmar Voiceover (TTS)")
+          col_sub, col_audio = st.columns(2)
+
+          with col_sub:
+            st.write("📄 **SRT Subtitle File:**")
             st.text_area(
-                "English Text",
-                value=full_english_script,
-                height=300,
-                key="en_script_area",
+                "SRT Preview",
+                value=srt_content[:2000] + "\n[Truncated Preview]",
+                height=200,
+                key="srt_area",
             )
             st.download_button(
-                "📥 Download English Script (.txt)",
-                data=full_english_script.encode("utf-8-sig"),
-                file_name="english_script.txt",
+                "📥 Download Subtitle (.srt)",
+                data=srt_content.encode("utf-8-sig"),
+                file_name="subtitle.srt",
                 mime="text/plain; charset=utf-8",
             )
 
-          with tab2:
-            st.subheader("မြန်မာ ဘာသာပြန် Script")
-            st.text_area(
-                "Myanmar Text",
-                value=myanmar_translation,
-                height=300,
-                key="my_script_area",
-            )
-            st.download_button(
-                "📥 Download မြန်မာ Script (.txt)",
-                data=myanmar_translation.encode("utf-8-sig"),
-                file_name="myanmar_script.txt",
-                mime="text/plain; charset=utf-8",
-            )
-
-          with tab3:
-            st.subheader("🤖 AI Script Summary & Story Recap")
-            st.write("**English Summary:**")
-            st.text_area(
-                "English Summary Text",
-                value=summary_en,
-                height=150,
-                key="en_sum_area",
-            )
-            st.write("**မြန်မာအနှစ်ချုပ် / ပြန်လည်ဆန်းသစ်ချက်:**")
-            st.text_area(
-                "Myanmar Summary Text",
-                value=summary_my,
-                height=150,
-                key="my_sum_area",
-            )
-
-          with tab4:
-            st.subheader("🎬 SRT Subtitle & Myanmar Voiceover (TTS)")
-            col_sub, col_audio = st.columns(2)
-
-            with col_sub:
-              st.write("📄 **SRT Subtitle File:**")
-              st.text_area(
-                  "SRT Preview",
-                  value=srt_content[:2000] + "\n[Truncated Preview]",
-                  height=200,
-                  key="srt_area",
-              )
-              st.download_button(
-                  "📥 Download Subtitle (.srt)",
-                  data=srt_content.encode("utf-8-sig"),
-                  file_name="subtitle.srt",
-                  mime="text/plain; charset=utf-8",
-              )
-
-            with col_audio:
-              st.write("🔊 **Myanmar Text-to-Speech (TTS Voiceover):**")
-              try:
-                tts_text = summary_my[:300]
-                tts = gTTS(text=tts_text, lang="my")
-                audio_fp = io.BytesIO()
-                tts.write_to_fp(audio_fp)
-                audio_fp.seek(0)
-                st.audio(audio_fp, format="audio/mp3")
-              except Exception as e:
-                st.warning(f"Audio TTS Generation မရရှိပါ: {str(e)}")
+          with col_audio:
+            st.write("🔊 **Myanmar Text-to-Speech (TTS Voiceover):**")
+            try:
+              tts_text = summary_my[:300]
+              tts = gTTS(text=tts_text, lang="my")
+              audio_fp = io.BytesIO()
+              tts.write_to_fp(audio_fp)
+              audio_fp.seek(0)
+              st.audio(audio_fp, format="audio/mp3")
+            except Exception as e:
+              st.warning(f"Audio TTS Generation မရရှိပါ: {str(e)}")
 
       except Exception as e:
-        st.error(f"❌ Script ထုတ်ယူ၍ မရပါ။ ({str(e)})")
+        st.error(f"❌ အမှားအယွင်း ဖြစ်ပေါ်သွားပါသည်: {str(e)}")
   else:
     st.warning("⚠️ ကျေးဇူးပြု၍ YouTube Link ရိုက်ထည့်ပေးပါ။")
     
