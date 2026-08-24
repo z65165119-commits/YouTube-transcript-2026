@@ -179,12 +179,13 @@ def generate_srt(transcript_data):
 
 
 def translate_text_to_myanmar(text):
-  """စာသားများကို သေချာပေါက် မြန်မာဘာသာသို့ ပြန်ဆိုပေးမည့် ခိုင်မာသောစနစ်"""
+  """မြန်မာဘာသာသို့ တိကျစွာ ပြန်ဆိုရန် အခြား Backup API များကိုပါ ပူးတွဲသုံးခြင်း"""
   if not text.strip():
     return ""
 
   clean_txt = re.sub(r"\s+", " ", text).strip()
-  max_len = 400
+  # စာသားရှည်ပါက အပိုင်းငယ်များခွဲမည်
+  max_len = 300
   chunks = [
       clean_txt[i : i + max_len] for i in range(0, len(clean_txt), max_len)
   ]
@@ -193,11 +194,13 @@ def translate_text_to_myanmar(text):
   for part in chunks:
     if not part.strip():
       continue
-    translated = part  # မူရင်းအတိုင်း ထားမည် (Fallback အနေဖြင့်)
+    translated = None
+
+    # Method 1: Google Translate API (gtx)
     try:
-      fallback_url = "https://translate.googleapis.com/translate_a/single"
-      params = {"client": "gtx", "sl": "en", "tl": "my", "dt": "t", "q": part}
-      res = requests.get(fallback_url, params=params, timeout=8)
+      url = "https://translate.googleapis.com/translate_a/single"
+      params = {"client": "dict-chrome-ex", "sl": "en", "tl": "my", "q": part}
+      res = requests.get(url, params=params, timeout=5)
       if res.status_code == 200:
         data = res.json()
         if data and data[0]:
@@ -205,8 +208,27 @@ def translate_text_to_myanmar(text):
     except Exception:
       pass
 
-    myanmar_chunks.append(translated if translated else part)
-    time.sleep(0.1)
+    # Method 2: MyMemory Translated API (Backup)
+    if not translated:
+      try:
+        url2 = "https://api.mymemory.translated.net/get"
+        params2 = {"q": part, "langpair": "en|my"}
+        res2 = requests.get(url2, params=params2, timeout=5)
+        if res2.status_code == 200:
+          data2 = res2.json()
+          if "responseData" in data2 and data2["responseData"]["translatedText"]:
+            translated = data2["responseData"]["translatedText"]
+      except Exception:
+        pass
+
+    # အကယ်၍ API နှစ်ခုစလုံး လုံးဝမရပါက မြန်မာလို ဘာသာပြန်ချက် မရရှိကြောင်း ပြမည်
+    if not translated or translated == part:
+      translated = (
+          f"[မြန်မာဘာသာပြန်ရန် အခက်အခဲရှိပါသည်: {part[:50]}...]"
+      )
+
+    myanmar_chunks.append(translated)
+    time.sleep(0.05)
 
   return "\n\n".join(myanmar_chunks)
 
@@ -310,8 +332,9 @@ if st.button("⚡ Script & AI Processing စတင်မည်", type="primary")
           chars = len(pure_raw_text)
           est_read_time = round(words / 150, 1)
 
-        with st.spinner("⏳ မြန်မာဘာသာသို့ တိကျမှန်ကန်စွာ ဘာသာပြန်ဆိုနေပါသည်..."):
-          # စာသားများကို အတိုအပြတ်များခွဲ၍ သေချာပေါက် မြန်မာဘာသာသို့ ပြန်မည်
+        with st.spinner(
+            "⏳ မြန်မာဘာသာသို့ တိကျမှန်ကန်စွာ ဘာသာပြန်ဆိုနေပါသည်..."
+        ):
           myanmar_translation = translate_text_to_myanmar(pure_raw_text)
           srt_content = generate_srt(fetched_transcript)
 
@@ -419,3 +442,4 @@ if st.button("⚡ Script & AI Processing စတင်မည်", type="primary")
         st.error(f"❌ အမှားအယွင်း ဖြစ်ပေါ်သွားပါသည်: {str(e)}")
   else:
     st.warning("⚠️ ကျေးဇူးပြု၍ YouTube Link ရိုက်ထည့်ပေးပါ။")
+          
