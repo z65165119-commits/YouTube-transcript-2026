@@ -182,13 +182,12 @@ def generate_srt(transcript_data):
   return srt_output
 
 
-def chunked_translate(text, chunk_size=400):
+def chunked_translate(text, chunk_size=250):
   if not text.strip():
     return ""
 
   translator = GoogleTranslator(source="auto", target="my")
 
-  # Server Error 500 မတက်စေရန် စာသားများကို သေးငယ်သော အပိုင်းလေးများအဖြစ် ခွဲထုတ်ခြင်း
   words = text.split()
   chunks = []
   current_chunk = ""
@@ -209,17 +208,17 @@ def chunked_translate(text, chunk_size=400):
     for attempt in range(3):
       try:
         res = translator.translate(chunk)
-        if res:
+        if res and "Error 500" not in res:
           translated_chunks.append(res)
           success = True
           break
       except Exception:
         pass
-      time.sleep(1)  # Error မတက်စေရန် ခေတ္တစောင့်ပေးခြင်း
+      time.sleep(1.0)
 
     if not success:
       translated_chunks.append(chunk)
-    time.sleep(0.5)
+    time.sleep(0.6)
 
   return " ".join(translated_chunks)
 
