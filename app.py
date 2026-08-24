@@ -60,8 +60,6 @@ def increment_user_usage(email):
 # 🔑 LOGIN SESSION MANAGEMENT
 # ---------------------------------------------------------
 ALLOWED_EMAILS = [
-    "soemoe@gmail.com",
-    "customer1@gmail.com",
     "zlynn7368@gmail.com",
 ]
 
@@ -182,44 +180,37 @@ def generate_srt(transcript_data):
   return srt_output
 
 
-def chunked_translation_safe(text, chunk_size=300):
+def fast_chunked_translation(text, chunk_size=1200):
   if not text.strip():
     return ""
 
   translator = GoogleTranslator(source="en", target="my")
   
-  # စာကြောင်းရေ သို့မဟုတ် စာလုံးရေအလိုက် သေးငယ်သော အပိုင်းလေးများ ခွဲထုတ်ခြင်း
-  words = text.split()
-  chunks = []
-  current_chunk = []
+  # စာသားများကို ပိုမိုကြီးမားသော Chunks များဖြင့် အပိုင်းခွဲခြင်း (မြန်ဆန်စေရန်)
+  if len(text) <= chunk_size:
+    try:
+      return translator.translate(text)
+    except Exception:
+      return text
 
-  for word in words:
-    current_chunk.append(word)
-    if len(" ".join(current_chunk)) >= chunk_size:
-      chunks.append(" ".join(current_chunk))
-      current_chunk = []
-  if current_chunk:
-    chunks.append(" ".join(current_chunk))
-
+  chunks = [text[i:i + chunk_size] for i in range(0, len(text), chunk_size)]
   translated_chunks = []
-  for idx, chunk in enumerate(chunks):
+
+  for chunk in chunks:
     success = False
-    for attempt in range(3):
+    for attempt in range(2):
       try:
         res = translator.translate(chunk)
-        if res and "Error" not in res:
+        if res:
           translated_chunks.append(res)
           success = True
           break
       except Exception:
         pass
-      time.sleep(0.3)
+      time.sleep(0.1)
 
     if not success:
       translated_chunks.append(chunk)
-    
-    # Google Translator Rate Limit မဖြစ်အောင် အပိုင်းတစ်ခုချင်းစီကြား ခေတ္တစောင့်ပေးခြင်း
-    time.sleep(0.3)
 
   return " ".join(translated_chunks)
 
@@ -321,11 +312,8 @@ if st.button("⚡ Script & AI Processing စတင်မည်", type="primary")
           chars = len(raw_text_combined)
           est_read_time = round(words / 150, 1)
 
-        with st.spinner(
-            "⏳ စာသားများကို အပိုင်းလိုက်ခွဲ၍ မြန်မာဘာသာသို့ တိကျစွာ"
-            " ဘာသာပြန်နေပါသည် (အချိန်အနည်းငယ်ကြာနိုင်ပါသည်)..."
-        ):
-          myanmar_translation = chunked_translation_safe(raw_text_combined)
+        with st.spinner("⏳ မြန်မာဘာသာသို့ အမြန်ဆုံး ဘာသာပြန်ဆိုနေပါသည်..."):
+          myanmar_translation = fast_chunked_translation(raw_text_combined)
 
           srt_content = generate_srt(fetched_transcript)
 
@@ -336,7 +324,7 @@ if st.button("⚡ Script & AI Processing စတင်မည်", type="primary")
               else (sentences[:6] if summary_length == "Medium" else sentences[:10])
           )
           summary_en = ". ".join(summary_sentences) + "."
-          summary_my = chunked_translation_safe(summary_en)
+          summary_my = fast_chunked_translation(summary_en)
 
         st.success("✅ အားလုံး အောင်မြင်စွာ ထုတ်ယူဘာသာပြန်ပြီးပါပြီ!")
 
@@ -423,4 +411,4 @@ if st.button("⚡ Script & AI Processing စတင်မည်", type="primary")
         st.error(f"❌ အမှားအယွင်း ဖြစ်ပေါ်သွားပါသည်: {str(e)}")
   else:
     st.warning("⚠️ ကျေးဇူးပြု၍ YouTube Link ရိုက်ထည့်ပေးပါ။")
-    
+      
