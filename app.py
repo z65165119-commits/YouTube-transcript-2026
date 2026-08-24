@@ -3,6 +3,7 @@ import io
 import json
 import os
 import re
+import time
 from deep_translator import GoogleTranslator
 from gtts import gTTS
 import streamlit as st
@@ -123,7 +124,7 @@ if is_vip:
   st.sidebar.success("👑 **VIP Unlimited Access**")
 else:
   remaining = max(0, FREE_LIMIT - current_usage)
-  st.sidebar.info(f"🎁 Free သုံးစွဲခွင့် ကျန်ရှိသည့်အကြိမ်: {remaining} / {FREE_LIMIT}")
+  st.sidebar.info(f"🎁 အခမဲ့ သုံးစွဲခွင့် ကျန်ရှိသည့်အကြိမ်: {remaining} / {FREE_LIMIT}")
 
 st.sidebar.markdown("---")
 st.sidebar.header("⚙️ Options")
@@ -134,10 +135,11 @@ summary_length = st.sidebar.select_slider(
     value="Medium",
 )
 
+# 🛑 Non-VIP တွေအတွက် ၅ ကြိမ်ပြည့်ရင် ရပ်တန့်မည့် စနစ် (Corrected Logic)
 if not is_vip and current_usage >= FREE_LIMIT:
   st.error("❌ သင့်၏ အခမဲ့ ၅ ကြိမ် အသုံးပြုခွင့် ကုန်ဆုံးသွားပါပြီ။")
   st.warning(
-      "ဆက်လက်အသုံးပြုလိုပါက Admin ထံ သို့ ဆက်သွယ်၍ **VIP Access** တောင်းခံပါရန်။"
+      "ဆက်လက်အသုံးပြုလိုပါက Admin ထံ သို့ ဆက်သွယ်၍ **VIP Access** ရယူပါရန်။"
   )
   st.stop()
 
@@ -176,8 +178,8 @@ def generate_srt(transcript_data):
   return srt_output
 
 
-# 🛡️ ROBUST CHUNKED TRANSLATION FUNCTION (Error 500 ကာကွယ်ရန်)
-def chunked_translate(text, chunk_size=3000):
+# 🛡️ ULTRA-SAFE TRANSLATION FUNCTION (Error 500 မတက်အောင် အပိုင်းသေးခွဲပြီးသား)
+def chunked_translate(text, chunk_size=1000):
   translator = GoogleTranslator(source="auto", target="my")
   if len(text) <= chunk_size:
     try:
@@ -189,15 +191,24 @@ def chunked_translate(text, chunk_size=3000):
       text[i : i + chunk_size] for i in range(0, len(text), chunk_size)
   ]
   translated_chunks = []
+  
   for chunk in chunks:
-    try:
-      res = translator.translate(chunk)
-      if res:
-        translated_chunks.append(res)
-      else:
-        translated_chunks.append(chunk)
-    except Exception:
+    success = False
+    for attempt in range(3):
+      try:
+        res = translator.translate(chunk)
+        if res and "Error 500" not in res:
+          translated_chunks.append(res)
+          success = True
+          break
+      except Exception:
+        pass
+      time.sleep(1)
+    
+    if not success:
       translated_chunks.append(chunk)
+    time.sleep(0.5)
+
   return " ".join(translated_chunks)
 
 
@@ -259,7 +270,7 @@ if st.button("⚡ Script & AI Processing စတင်မည်", type="primary")
         st.video(video_url)
 
         with st.spinner(
-            "⏳ Transcript နှင့် AI Data များကို တွက်ချက်ဘာသာပြန်နေပါသည်..."
+            "⏳ Transcript နှင့် AI Data များကို အပိုင်းခွဲ၍ ဘာသာပြန်နေပါသည်..."
         ):
           fetched_transcript = fetch_transcript_robust(video_url, video_id)
 
@@ -281,7 +292,6 @@ if st.button("⚡ Script & AI Processing စတင်မည်", type="primary")
           est_read_time = round(words / 150, 1)
 
           myanmar_translation = chunked_translate(raw_text_combined)
-
           srt_content = generate_srt(fetched_transcript)
 
           sentences = raw_text_combined.split(". ")
@@ -295,6 +305,7 @@ if st.button("⚡ Script & AI Processing စတင်မည်", type="primary")
 
           st.success("✅ အားလုံး အောင်မြင်စွာ ထုတ်ယူဘာသာပြန်ပြီးပါပြီ!")
 
+          # Free User ဖြစ်မှသာ အကြိမ်ရေ တိုးမည် (VIP ဆိုရင် မတိုးပါ)
           if not is_vip:
             increment_user_usage(clean_email)
 
@@ -314,7 +325,6 @@ if st.button("⚡ Script & AI Processing စတင်မည်", type="primary")
 
           with tab1:
             st.subheader("English Script")
-            # Copy လုပ်ရလွယ်ကူအောင် st.text_area သုံးပေးထားပါသည် (右上角မှာ Copy button ပါပြီးသားဖြစ်သည်)
             st.text_area(
                 "English Text",
                 value=full_english_script,
