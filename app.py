@@ -5,7 +5,6 @@ import os
 import re
 import time
 from gtts import gTTS
-from googletrans import Translator  # googletrans library ကို အဓိက သုံးမည်
 import requests
 import streamlit as st
 import yt_dlp
@@ -180,14 +179,11 @@ def generate_srt(transcript_data):
 
 
 def translate_to_myanmar(text):
-  """googletrans ကို အသုံးပြု၍ သေချာပေါက် မြန်မာဘာသာသို့ ပြန်ပေးမည့် စနစ်"""
+  """Google Translate API (Stable) ကို အသုံးပြု၍ မြန်မာသို့ တိုက်ရိုက်ဘာသာပြန်ခြင်း"""
   if not text.strip():
     return ""
 
-  translator = Translator()
   clean_txt = re.sub(r"\s+", " ", text).strip()
-
-  # စာသားကို ၄၅၀ စာလုံးစီ အပိုင်းခွဲမည် (API error မတက်စေရန်)
   max_len = 450
   chunks = [
       clean_txt[i : i + max_len] for i in range(0, len(clean_txt), max_len)
@@ -198,32 +194,17 @@ def translate_to_myanmar(text):
     if not part.strip():
       continue
     try:
-      # googletrans ဖြင့် အင်္ဂလိပ်မှ မြန်မာသို့ တိုက်ရိုက်ဘာသာပြန်ခြင်း
-      result = translator.translate(part, src="en", dest="my")
-      if result and result.text:
-        myanmar_chunks.append(result.text)
+      fallback_url = "https://translate.googleapis.com/translate_a/single"
+      params = {"client": "gtx", "sl": "en", "tl": "my", "dt": "t", "q": part}
+      res = requests.get(fallback_url, params=params, timeout=5)
+      if res.status_code == 200:
+        data = res.json()
+        translated = "".join([item[0] for item in data[0] if item[0]]).strip()
+        myanmar_chunks.append(translated if translated else part)
       else:
         myanmar_chunks.append(part)
     except Exception:
-      # အကယ်၍ googletrans ချို့ယွင်းပါက အရန်အနေဖြင့် အောက်ပါ API သို့ ပြောင်းမည်
-      try:
-        fallback_url = "https://translate.googleapis.com/translate_a/single"
-        params = {
-            "client": "gtx",
-            "sl": "en",
-            "tl": "my",
-            "dt": "t",
-            "q": part,
-        }
-        res = requests.get(fallback_url, params=params, timeout=5)
-        if res.status_code == 200:
-          data = res.json()
-          translated = "".join([item[0] for item in data[0] if item[0]]).strip()
-          myanmar_chunks.append(translated if translated else part)
-        else:
-          myanmar_chunks.append(part)
-      except Exception:
-        myanmar_chunks.append(part)
+      myanmar_chunks.append(part)
 
     time.sleep(0.1)
 
@@ -439,4 +420,4 @@ if st.button("⚡ Script & AI Processing စတင်မည်", type="primary")
         st.error(f"❌ အမှားအယွင်း ဖြစ်ပေါ်သွားပါသည်: {str(e)}")
   else:
     st.warning("⚠️ ကျေးဇူးပြု၍ YouTube Link ရိုက်ထည့်ပေးပါ။")
-    
+          
