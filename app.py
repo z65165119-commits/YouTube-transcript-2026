@@ -4,7 +4,7 @@ import json
 import os
 import re
 import time
-from deep_translator import GoogleTranslator, MyMemoryTranslator
+from deep_translator import GoogleTranslator
 from gtts import gTTS
 import streamlit as st
 import yt_dlp
@@ -182,11 +182,13 @@ def generate_srt(transcript_data):
   return srt_output
 
 
-def robust_translate(text, chunk_size=400):
+def chunked_translation_safe(text, chunk_size=300):
   if not text.strip():
     return ""
 
-  # စာသားများကို သေးငယ်သော အပိုင်းလေးများ (Chunks) အဖြစ် ပိုင်းခြားခြင်း
+  translator = GoogleTranslator(source="en", target="my")
+  
+  # စာကြောင်းရေ သို့မဟုတ် စာလုံးရေအလိုက် သေးငယ်သော အပိုင်းလေးများ ခွဲထုတ်ခြင်း
   words = text.split()
   chunks = []
   current_chunk = []
@@ -200,35 +202,24 @@ def robust_translate(text, chunk_size=400):
     chunks.append(" ".join(current_chunk))
 
   translated_chunks = []
-  for chunk in chunks:
-    translated = False
-    # ၁။ Google Translator ဖြင့် ကြိုးစားရန်
-    for attempt in range(2):
+  for idx, chunk in enumerate(chunks):
+    success = False
+    for attempt in range(3):
       try:
-        res = GoogleTranslator(source="en", target="my").translate(chunk)
+        res = translator.translate(chunk)
         if res and "Error" not in res:
           translated_chunks.append(res)
-          translated = True
+          success = True
           break
       except Exception:
         pass
       time.sleep(0.3)
 
-    # ၂။ Google မရလျှင် MyMemory Translator သို့ ပြောင်းသုံးရန် (Backup)
-    if not translated:
-      try:
-        res = MyMemoryTranslator(source="en", target="my").translate(chunk)
-        if res and "Error" not in res:
-          translated_chunks.append(res)
-          translated = True
-      except Exception:
-        pass
-
-    # အကယ်၍ အားလုံးမရလျှင် မူရင်းစာသားကို ဆက်ထည့်ရန်
-    if not translated:
+    if not success:
       translated_chunks.append(chunk)
-
-    time.sleep(0.2)
+    
+    # Google Translator Rate Limit မဖြစ်အောင် အပိုင်းတစ်ခုချင်းစီကြား ခေတ္တစောင့်ပေးခြင်း
+    time.sleep(0.3)
 
   return " ".join(translated_chunks)
 
@@ -310,7 +301,7 @@ if st.button("⚡ Script & AI Processing စတင်မည်", type="primary")
       try:
         st.video(video_url)
 
-        with st.spinner("⏳ Transcript နှင့် AI Data များကို ထုတ်ယူနေပါသည်..."):
+        with st.spinner("⏳ Transcript နှင့် Data များကို ထုတ်ယူနေပါသည်..."):
           fetched_transcript = fetch_transcript_robust(video_url, video_id)
 
           english_lines = []
@@ -331,9 +322,10 @@ if st.button("⚡ Script & AI Processing စတင်မည်", type="primary")
           est_read_time = round(words / 150, 1)
 
         with st.spinner(
-            "⏳ မြန်မာဘာသာသို့ အပိုင်းလိုက် တည်ငြိမ်စွာ ဘာသာပြန်ဆိုနေပါသည်..."
+            "⏳ စာသားများကို အပိုင်းလိုက်ခွဲ၍ မြန်မာဘာသာသို့ တိကျစွာ"
+            " ဘာသာပြန်နေပါသည် (အချိန်အနည်းငယ်ကြာနိုင်ပါသည်)..."
         ):
-          myanmar_translation = robust_translate(raw_text_combined)
+          myanmar_translation = chunked_translation_safe(raw_text_combined)
 
           srt_content = generate_srt(fetched_transcript)
 
@@ -344,7 +336,7 @@ if st.button("⚡ Script & AI Processing စတင်မည်", type="primary")
               else (sentences[:6] if summary_length == "Medium" else sentences[:10])
           )
           summary_en = ". ".join(summary_sentences) + "."
-          summary_my = robust_translate(summary_en)
+          summary_my = chunked_translation_safe(summary_en)
 
         st.success("✅ အားလုံး အောင်မြင်စွာ ထုတ်ယူဘာသာပြန်ပြီးပါပြီ!")
 
