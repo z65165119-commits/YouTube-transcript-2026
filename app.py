@@ -351,12 +351,11 @@ if st.button("⚡ Script & AI Processing စတင်မည်", type="primary")
 
         with tab1:
           st.subheader("English Script")
-          st.markdown(
-              '<div style="background-color: #f0f2f6; padding: 15px; border-radius:'
-              f' 10px; color: #000;">{full_english_script}</div>',
-              unsafe_allow_html=True,
+          st.info(
+              "💡 ညာဘက်အပေါ်ထောင့်ရှိ **Copy icon** ကိုနှိပ်၍ တစ်ချက်တည်း"
+              " ကူးယူနိုင်ပါသည်။"
           )
-          st.markdown("<br>", unsafe_allow_html=True)
+          st.code(full_english_script)
           st.download_button(
               "📥 Download English Script (.txt)",
               data=full_english_script.encode("utf-8-sig"),
@@ -366,12 +365,11 @@ if st.button("⚡ Script & AI Processing စတင်မည်", type="primary")
 
         with tab2:
           st.subheader("မြန်မာ ဘာသာပြန် Script")
-          st.markdown(
-              '<div style="background-color: #f0f2f6; padding: 15px; border-radius:'
-              f' 10px; color: #000;">{myanmar_translation}</div>',
-              unsafe_allow_html=True,
+          st.info(
+              "💡 ညာဘက်အပေါ်ထောင့်ရှိ **Copy icon** ကိုနှိပ်၍ တစ်ချက်တည်း"
+              " ကူးယူနိုင်ပါသည်။"
           )
-          st.markdown("<br>", unsafe_allow_html=True)
+          st.code(myanmar_translation)
           st.download_button(
               "📥 Download မြန်မာ Script (.txt)",
               data=myanmar_translation.encode("utf-8-sig"),
@@ -382,18 +380,9 @@ if st.button("⚡ Script & AI Processing စတင်မည်", type="primary")
         with tab3:
           st.subheader("🤖 AI Script Summary & Story Recap")
           st.write("**English Summary:**")
-          st.markdown(
-              '<div style="background-color: #f0f2f6; padding: 15px; border-radius:'
-              f' 10px; color: #000;">{summary_en}</div>',
-              unsafe_allow_html=True,
-          )
-          st.markdown("<br>", unsafe_allow_html=True)
+          st.code(summary_en)
           st.write("**မြန်မာအနှစ်ချုပ် / ပြန်လည်ဆန်းသစ်ချက်:**")
-          st.markdown(
-              '<div style="background-color: #f0f2f6; padding: 15px; border-radius:'
-              f' 10px; color: #000;">{summary_my}</div>',
-              unsafe_allow_html=True,
-          )
+          st.code(summary_my)
 
         with tab4:
           st.subheader("🎬 SRT Subtitle & Myanmar Voiceover (TTS)")
@@ -401,14 +390,7 @@ if st.button("⚡ Script & AI Processing စတင်မည်", type="primary")
 
           with col_sub:
             st.write("📄 **SRT Subtitle File:**")
-            st.markdown(
-                '<div style="background-color: #f0f2f6; padding: 15px; border-radius:'
-                f' 10px; color: #000; font-family: monospace; font-size:'
-                ' 12px;">{srt_content[:2000]}<br>[Truncated'
-                " Preview]</div>",
-                unsafe_allow_html=True,
-            )
-            st.markdown("<br>", unsafe_allow_html=True)
+            st.code(srt_content[:2000] + "\n[Truncated Preview]")
             st.download_button(
                 "📥 Download Subtitle (.srt)",
                 data=srt_content.encode("utf-8-sig"),
@@ -432,4 +414,3 @@ if st.button("⚡ Script & AI Processing စတင်မည်", type="primary")
         st.error(f"❌ အမှားအယွင်း ဖြစ်ပေါ်သွားပါသည်: {str(e)}")
   else:
     st.warning("⚠️ ကျေးဇူးပြု၍ YouTube Link ရိုက်ထည့်ပေးပါ။")
-        
