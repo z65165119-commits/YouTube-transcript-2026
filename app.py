@@ -182,24 +182,24 @@ def generate_srt(transcript_data):
   return srt_output
 
 
-def chunked_translate(text, chunk_size=1500):
+def chunked_translate(text, chunk_size=400):
   if not text.strip():
     return ""
 
   translator = GoogleTranslator(source="auto", target="my")
-  
-  # စာကြောင်းများကို ပိုမိုပြည့်စုံစေရန် sentences ဖြင့် ခွဲ၍ ဘာသာပြန်ခြင်း
-  sentences = re.split(r'(?<=[.!?])\s+', text)
+
+  # Server Error 500 မတက်စေရန် စာသားများကို သေးငယ်သော အပိုင်းလေးများအဖြစ် ခွဲထုတ်ခြင်း
+  words = text.split()
   chunks = []
   current_chunk = ""
 
-  for sentence in sentences:
-    if len(current_chunk) + len(sentence) < chunk_size:
-      current_chunk += " " + sentence
+  for word in words:
+    if len(current_chunk) + len(word) + 1 < chunk_size:
+      current_chunk += " " + word
     else:
       if current_chunk:
         chunks.append(current_chunk.strip())
-      current_chunk = sentence
+      current_chunk = word
   if current_chunk:
     chunks.append(current_chunk.strip())
 
@@ -215,13 +215,13 @@ def chunked_translate(text, chunk_size=1500):
           break
       except Exception:
         pass
-      time.sleep(0.4)
+      time.sleep(1)  # Error မတက်စေရန် ခေတ္တစောင့်ပေးခြင်း
 
     if not success:
       translated_chunks.append(chunk)
-    time.sleep(0.2)
+    time.sleep(0.5)
 
-  return "\n\n".join(translated_chunks)
+  return " ".join(translated_chunks)
 
 
 def fetch_transcript_robust(v_url, v_id):
