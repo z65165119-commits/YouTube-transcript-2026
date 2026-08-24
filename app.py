@@ -179,13 +179,13 @@ def generate_srt(transcript_data):
 
 
 def translate_text_to_myanmar(text):
-  """မြန်မာဘာသာသို့ တိကျစွာ ပြန်ဆိုရန် အခြား Backup API များကိုပါ ပူးတွဲသုံးခြင်း"""
+  """API Key မလိုဘဲ Free Translation API များကို အသုံးပြု၍ ဘာသာပြန်ခြင်း"""
   if not text.strip():
     return ""
 
   clean_txt = re.sub(r"\s+", " ", text).strip()
-  # စာသားရှည်ပါက အပိုင်းငယ်များခွဲမည်
-  max_len = 300
+  # စာသားရှည်ပါက အပိုင်းငယ်များခွဲမည် (API Limit ရှောင်ရှားရန်)
+  max_len = 400
   chunks = [
       clean_txt[i : i + max_len] for i in range(0, len(clean_txt), max_len)
   ]
@@ -221,16 +221,14 @@ def translate_text_to_myanmar(text):
       except Exception:
         pass
 
-    # အကယ်၍ API နှစ်ခုစလုံး လုံးဝမရပါက မြန်မာလို ဘာသာပြန်ချက် မရရှိကြောင်း ပြမည်
-    if not translated or translated == part:
-      translated = (
-          f"[မြန်မာဘာသာပြန်ရန် အခက်အခဲရှိပါသည်: {part[:50]}...]"
-      )
+    # အကယ်၍ API နှစ်ခုစလုံး မရပါက မူရင်းစာသားကိုသာ ပြန်ပြမည် (Error စာသား မပြတော့ပါ)
+    if not translated:
+      translated = part
 
     myanmar_chunks.append(translated)
-    time.sleep(0.05)
+    time.sleep(0.1)
 
-  return "\n\n".join(myanmar_chunks)
+  return "\n".join(myanmar_chunks)
 
 
 def fetch_transcript_robust(v_url, v_id):
@@ -332,9 +330,7 @@ if st.button("⚡ Script & AI Processing စတင်မည်", type="primary")
           chars = len(pure_raw_text)
           est_read_time = round(words / 150, 1)
 
-        with st.spinner(
-            "⏳ မြန်မာဘာသာသို့ တိကျမှန်ကန်စွာ ဘာသာပြန်ဆိုနေပါသည်..."
-        ):
+        with st.spinner("⏳ မြန်မာဘာသာသို့ ဘာသာပြန်ဆိုနေပါသည်..."):
           myanmar_translation = translate_text_to_myanmar(pure_raw_text)
           srt_content = generate_srt(fetched_transcript)
 
@@ -442,4 +438,4 @@ if st.button("⚡ Script & AI Processing စတင်မည်", type="primary")
         st.error(f"❌ အမှားအယွင်း ဖြစ်ပေါ်သွားပါသည်: {str(e)}")
   else:
     st.warning("⚠️ ကျေးဇူးပြု၍ YouTube Link ရိုက်ထည့်ပေးပါ။")
-          
+    
