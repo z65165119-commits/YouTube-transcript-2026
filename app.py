@@ -5,6 +5,7 @@ import os
 import re
 import time
 from gtts import gTTS
+from googletrans import Translator  # googletrans library ကို အဓိက သုံးမည်
 import requests
 import streamlit as st
 import yt_dlp
@@ -17,7 +18,7 @@ st.set_page_config(
 )
 
 # ---------------------------------------------------------
-# 🗄️ JSON DATABASE FUNCTIONS FOR PERSISTENT USAGE TRACKING
+# 🗄️ JSON DATABASE FUNCTIONS
 # ---------------------------------------------------------
 DB_FILE = "usage_db.json"
 
@@ -72,7 +73,7 @@ if "logged_in" not in st.session_state:
   st.session_state["user_email"] = ""
 
 # ---------------------------------------------------------
-# 🔝 HEADER BAR WITH SIGN IN / USER INFO
+# 🔝 HEADER BAR
 # ---------------------------------------------------------
 col_title, col_auth = st.columns([3, 1])
 
@@ -87,9 +88,6 @@ with col_auth:
       st.session_state["user_email"] = ""
       st.rerun()
 
-# ---------------------------------------------------------
-# 🚨 MANDATORY LOGIN CHECK
-# ---------------------------------------------------------
 if not st.session_state["logged_in"]:
   st.markdown("---")
   st.warning("⚠️ App အသုံးပြုရန် သင့်၏ Gmail (သို့) Email ဖြင့် အရင် ဝင်ရောက်ပါ။")
@@ -115,7 +113,7 @@ is_vip = clean_email in allowed_emails_lower
 current_usage = get_user_usage(clean_email)
 
 # ---------------------------------------------------------
-# ⚙️ SIDEBAR - USER ACCOUNT & OPTIONS
+# ⚙️ SIDEBAR
 # ---------------------------------------------------------
 st.sidebar.header("👤 Account Info")
 st.sidebar.write(f"**Logged in as:**\n{clean_email}")
@@ -181,74 +179,55 @@ def generate_srt(transcript_data):
   return srt_output
 
 
-def translate_safe(text):
-  """သေချာပေါက် မြန်မာဘာသာသို့သာ ပြန်ပေးမည့် ဘာသာပြန်စနစ်"""
+def translate_to_myanmar(text):
+  """googletrans ကို အသုံးပြု၍ သေချာပေါက် မြန်မာဘာသာသို့ ပြန်ပေးမည့် စနစ်"""
   if not text.strip():
     return ""
 
+  translator = Translator()
   clean_txt = re.sub(r"\s+", " ", text).strip()
-  max_len = 350
+
+  # စာသားကို ၄၅၀ စာလုံးစီ အပိုင်းခွဲမည် (API error မတက်စေရန်)
+  max_len = 450
   chunks = [
       clean_txt[i : i + max_len] for i in range(0, len(clean_txt), max_len)
   ]
-  translated_chunks = []
+  myanmar_chunks = []
 
   for part in chunks:
     if not part.strip():
       continue
-    success = False
-    # ပထမနည်းလမ်း - MyMemory API
     try:
-      url = "https://api.mymemory.translated.net/get"
-      params = {"q": part, "langpair": "en|my"}
-      response = requests.get(url, params=params, timeout=6)
-      if response.status_code == 200:
-        data = response.json()
-        translated_text = data.get("responseData", {}).get(
-            "translatedText", ""
-        )
-        if (
-            translated_text
-            and translated_text.strip() != part.strip()
-            and "MYMEMORY WARNING" not in translated_text
-        ):
-          translated_chunks.append(translated_text)
-          success = True
+      # googletrans ဖြင့် အင်္ဂလိပ်မှ မြန်မာသို့ တိုက်ရိုက်ဘာသာပြန်ခြင်း
+      result = translator.translate(part, src="en", dest="my")
+      if result and result.text:
+        myanmar_chunks.append(result.text)
+      else:
+        myanmar_chunks.append(part)
     except Exception:
-      pass
-
-    # အကယ်၍ ပထမနည်း မအောင်မြင်ပါက Google Translate Web endpoint သို့မဟုတ် fallback သုံးမည်
-    if not success:
+      # အကယ်၍ googletrans ချို့ယွင်းပါက အရန်အနေဖြင့် အောက်ပါ API သို့ ပြောင်းမည်
       try:
-        g_url = "https://translate.googleapis.com/translate_a/single"
-        g_params = {
+        fallback_url = "https://translate.googleapis.com/translate_a/single"
+        params = {
             "client": "gtx",
             "sl": "en",
             "tl": "my",
             "dt": "t",
             "q": part,
         }
-        g_res = requests.get(g_url, params=g_params, timeout=6)
-        if g_res.status_code == 200:
-          g_data = g_res.json()
-          g_translated = "".join(
-              [item[0] for item in g_data[0] if item[0]]
-          ).strip()
-          if g_translated:
-            translated_chunks.append(g_translated)
-            success = True
+        res = requests.get(fallback_url, params=params, timeout=5)
+        if res.status_code == 200:
+          data = res.json()
+          translated = "".join([item[0] for item in data[0] if item[0]]).strip()
+          myanmar_chunks.append(translated if translated else part)
+        else:
+          myanmar_chunks.append(part)
       except Exception:
-        pass
+        myanmar_chunks.append(part)
 
-    if not success:
-      # အလုံးစုံ မအောင်မြင်မှသာ အင်္ဂလိပ်စာကို မြန်မာစာလုံးဖြင့် အကျဉ်းချုပ်ပြမည်
-      translated_chunks.append(
-          "(ဘာသာပြန်ချက် ရှာမတွေ့ပါ - " + part[:50] + "...)"
-      )
+    time.sleep(0.1)
 
-    time.sleep(0.3)
-
-  return " ".join(translated_chunks)
+  return " ".join(myanmar_chunks)
 
 
 def fetch_transcript_robust(v_url, v_id):
@@ -353,7 +332,7 @@ if st.button("⚡ Script & AI Processing စတင်မည်", type="primary")
         with st.spinner(
             "⏳ မြန်မာဘာသာသို့ တိကျမှန်ကန်စွာ ဘာသာပြန်ဆိုနေပါသည်..."
         ):
-          myanmar_translation = translate_safe(pure_raw_text)
+          myanmar_translation = translate_to_myanmar(pure_raw_text)
           srt_content = generate_srt(fetched_transcript)
 
           sentences = [s.strip() for s in pure_raw_text.split(". ") if s.strip()]
@@ -368,7 +347,7 @@ if st.button("⚡ Script & AI Processing စတင်မည်", type="primary")
               if summary_sentences
               else pure_raw_text[:300]
           )
-          summary_my = translate_safe(summary_en)
+          summary_my = translate_to_myanmar(summary_en)
 
         st.success("✅ အားလုံး အောင်မြင်စွာ ဆောင်ရွက်ပြီးပါပြီ!")
 
@@ -460,4 +439,4 @@ if st.button("⚡ Script & AI Processing စတင်မည်", type="primary")
         st.error(f"❌ အမှားအယွင်း ဖြစ်ပေါ်သွားပါသည်: {str(e)}")
   else:
     st.warning("⚠️ ကျေးဇူးပြု၍ YouTube Link ရိုက်ထည့်ပေးပါ။")
-    
+        
