@@ -4,8 +4,8 @@ import json
 import os
 import re
 import time
-from deep_translator import GoogleTranslator
 from gtts import gTTS
+import requests
 import streamlit as st
 import yt_dlp
 from youtube_transcript_api import YouTubeTranscriptApi
@@ -182,34 +182,38 @@ def generate_srt(transcript_data):
   return srt_output
 
 
-def safe_chunk_translate(text):
+def translate_text_free(text):
+  """Google Translate Public API ကို အသုံးပြု၍ တိကျသေချာစွာ မြန်မာလို ဘာသာပြန်ခြင်း"""
   if not text.strip():
     return ""
+
   try:
-    translator = GoogleTranslator(source="en", target="my")
-    chunk_size = 1000
+    # စာသားများလွန်းလျှင် ၄၀၀၀ စာလုံးစီ အပိုင်းခွဲမည်
+    chunk_size = 4000
     chunks = [text[i : i + chunk_size] for i in range(0, len(text), chunk_size)]
-    translated_parts = []
+    translated_full = []
 
     for chunk in chunks:
-      success = False
-      for attempt in range(3):
-        try:
-          res = translator.translate(chunk)
-          if res and res.strip() and res.strip() != chunk.strip():
-            translated_parts.append(res)
-            success = True
-            break
-        except Exception:
-          pass
-        time.sleep(0.3)
+      url = "https://translate.googleapis.com/translate_a/single"
+      params = {
+          "client": "gtx",
+          "sl": "en",
+          "tl": "my",
+          "dt": "t",
+          "q": chunk,
+      }
+      response = requests.get(url, params=params, timeout=10)
+      if response.status_code == 200:
+        res_json = response.json()
+        translated_chunk = "".join(
+            [sentence[0] for sentence in res_json[0] if sentence[0]]
+        )
+        translated_full.append(translated_chunk)
+      else:
+        translated_full.append(chunk)
+      time.sleep(0.2)
 
-      if not success:
-        # ဘာသာပြန်မရရင်တောင် နောက်ဆုံးနည်းအနေနဲ့ စာသားကို သန့်စင်ပြီး ထည့်မည်
-        translated_parts.append(chunk)
-      time.sleep(0.3)
-
-    return " ".join(translated_parts)
+    return " ".join(translated_full)
   except Exception as e:
     return f"ဘာသာပြန်ဆိုရာတွင် အခက်အခဲရှိပါသည်။ ({str(e)})"
 
@@ -247,8 +251,6 @@ def fetch_transcript_robust(v_url, v_id):
           lang = list(subtitles.keys())[0]
 
         sub_data = subtitles[lang]
-        import requests
-
         json_url = next(
             (
                 s["url"]
@@ -299,8 +301,9 @@ if st.button("⚡ Script & AI Processing စတင်မည်", type="primary")
           for item in fetched_transcript:
             start_str = format_time(item["start"])
             text = item["text"].strip()
-            # အက္ခရာနံပါတ် သို့မဟုတ် index နံပါတ်များ ပါဝင်နေပါက ဖယ်ထုတ်ရန်
-            clean_t = re.sub(r"^\d+\.?\s*", "", text)
+            clean_t = re.sub(
+                r"^\d+\.?\s*", "", text
+            )  # နံပါတ်များကို ဖယ်ထုတ်မည်
             if clean_t:
               pure_texts.append(clean_t)
 
@@ -317,9 +320,9 @@ if st.button("⚡ Script & AI Processing စတင်မည်", type="primary")
           est_read_time = round(words / 150, 1)
 
         with st.spinner(
-            "⏳ မြန်မာဘာသာသို့ အပိုင်းလိုက် တိကျသေချာစွာ ဘာသာပြန်ဆိုနေပါသည်..."
+            "⏳ မြန်မာဘာသာသို့ Google Translate ဖြင့် တိကျသေချာစွာ ဘာသာပြန်ဆိုနေပါသည်..."
         ):
-          myanmar_translation = safe_chunk_translate(pure_raw_text)
+          myanmar_translation = translate_text_free(pure_raw_text)
           srt_content = generate_srt(fetched_transcript)
 
           sentences = [s.strip() for s in pure_raw_text.split(". ") if s.strip()]
@@ -329,8 +332,12 @@ if st.button("⚡ Script & AI Processing စတင်မည်", type="primary")
               else (6 if summary_length == "Medium" else 10)
           )
           summary_sentences = sentences[:summary_count]
-          summary_en = ". ".join(summary_sentences) + "." if summary_sentences else pure_raw_text[:300]
-          summary_my = safe_chunk_translate(summary_en)
+          summary_en = (
+              ". ".join(summary_sentences) + "."
+              if summary_sentences
+              else pure_raw_text[:300]
+          )
+          summary_my = translate_text_free(summary_en)
 
         st.success("✅ အားလုံး အောင်မြင်စွာ ထုတ်ယူဘာသာပြန်ပြီးပါပြီ!")
 
