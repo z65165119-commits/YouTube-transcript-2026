@@ -2,16 +2,12 @@ from datetime import datetime
 import io
 import json
 import os
-import re
-import time
 from gtts import gTTS
 import requests
 import streamlit as st
 
 st.set_page_config(
-    page_title="YouTube to Myanmar Voice (Line-by-Line)",
-    page_icon="🔊",
-    layout="wide",
+    page_title="Script to Myanmar Voice & Text", page_icon="🇲🇲", layout="wide"
 )
 
 # ---------------------------------------------------------
@@ -75,7 +71,7 @@ if "logged_in" not in st.session_state:
 col_title, col_auth = st.columns([3, 1])
 
 with col_title:
-  st.title("🔊 ယူကျု့ မူရင်းအတိုင်း မြန်မာအသံထွက် (Line-by-Line)")
+  st.title("🇲🇲 ယူကျု့နှင့် အခြား Script များကို မြန်မာအသံသို့ ပြောင်းရန်")
 
 with col_auth:
   if st.session_state["logged_in"]:
@@ -135,181 +131,102 @@ if not is_vip and current_usage >= FREE_LIMIT:
   st.stop()
 
 # ---------------------------------------------------------
-# 🎬 MAIN LOGIC
+# 📝 MAIN INPUT & TRANSLATE + TTS LOGIC
 # ---------------------------------------------------------
-video_url = st.text_input("🔗 YouTube ဗီဒီယိုလင့်ခ်ကို ရိုက်ထည့်ပါ:", "")
+st.markdown(
+    "💡 **ဗီဒီယို၏ အင်္ဂလိပ် Script (သို့မဟုတ်) စာသားများကို အောက်ပါ Box"
+    " ထဲတွင် Copy ကူးထည့်ပါ။ မြန်မာဘာသာသို့ အလိုအလျောက် ပြောင်းပေးပြီး"
+    " မြန်မာအသံဖိုင် (MP3) ပါ ထုတ်ပေးပါမည်။**"
+)
+
+input_script = st.text_area(
+    "✍️ Script / စာသားများ ထည့်သွင်းရန် (Paste here):", height=250
+)
 
 
-def extract_video_id(url):
-  match = re.search(r"(?:v=|\/)([0-9A-Za-z_-]{11})", url)
-  return match.group(1) if match else None
-
-
-def format_time(seconds):
-  minutes = int(seconds // 60)
-  secs = int(seconds % 60)
-  return f"{minutes:02d}:{secs:02d}"
-
-
-def translate_text(text):
+def translate_to_myanmar(text):
   if not text.strip():
     return ""
-  try:
-    url = "https://translate.googleapis.com/translate_a/single"
-    params = {"client": "gtx", "sl": "auto", "tl": "my", "dt": "t", "q": text}
-    headers = {"User-Agent": "Mozilla/5.0"}
-    res = requests.get(url, params=params, headers=headers, timeout=5)
-    if res.status_code == 200:
-      data = res.json()
-      if data and data[0]:
-        return "".join(
-            [item[0] for item in data[0] if item and item[0]]
-        ).strip()
-  except Exception:
-    pass
-  return text
+  max_len = 500
+  chunks = [text[i : i + max_len] for i in range(0, len(text), max_len)]
+  translated_chunks = []
+  for chunk in chunks:
+    try:
+      url = "https://translate.googleapis.com/translate_a/single"
+      params = {
+          "client": "gtx",
+          "sl": "auto",
+          "tl": "my",
+          "dt": "t",
+          "q": chunk,
+      }
+      headers = {"User-Agent": "Mozilla/5.0"}
+      res = requests.get(url, params=params, headers=headers, timeout=5)
+      if res.status_code == 200:
+        data = res.json()
+        if data and data[0]:
+          translated = "".join(
+              [item[0] for item in data[0] if item and item[0]]
+          ).strip()
+          translated_chunks.append(translated)
+    except Exception:
+      pass
+  return " ".join(translated_chunks) if translated_chunks else text
 
 
-def get_fallback_transcript(video_id):
-  """Streamlit IP Block ကို ကျော်လွှားရန် YouTube webpage ကို നേരിട്ട് ခေါ်ယူပြီး စာသားထုတ်ယူခြင်း"""
-  url = f"https://www.youtube.com/watch?v={video_id}"
-  headers = {
-      "User-Agent": (
-          "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML,"
-          " like Gecko) Chrome/120.0.0.0 Safari/537.36"
-      ),
-      "Accept-Language": "en-US,en;q=0.5",
-  }
-  response = requests.get(url, headers=headers, timeout=10)
-  html = response.text
+if st.button("🚀 မြန်မာစာသားနှင့် အသံဖိုင် (MP3) ထုတ်မည်", type="primary"):
+  if input_script:
+    with st.spinner(
+        "⏳ မြန်မာဘာသာသို့ ဘာသာပြန်ခြင်းနှင့် အသံဖိုင် ဖန်တီးနေပါသည်..."
+    ):
+      myanmar_text = translate_to_myanmar(input_script)
 
-  # Captions JSON ကို ရှာဖွေခြင်း
-  caption_match = re.search(r'"captions":\s*({.+?}),"videoDetails"', html)
-  if not caption_match:
-    raise Exception(
-        "ဤဗီဒီယိုတွင် အလိုအလျောက် သို့မဟုတ် တရားဝင် စာတန်းထိုး (Transcript)"
-        " မရှိပါ။"
+    if not is_vip:
+      increment_user_usage(clean_email)
+
+    st.success("✅ အောင်မြင်စွာ ဖန်တီးပြီးပါပြီ!")
+
+    words = len(myanmar_text.split())
+    chars = len(myanmar_text)
+    m1, m2 = st.columns(2)
+    m1.metric("📝 မြန်မာစာလုံးရေ", f"{words:,}")
+    m2.metric("🔤 အက္ခရာရေ", f"{chars:,}")
+
+    st.markdown("---")
+
+    tab1, tab2 = st.tabs(
+        ["🇲🇲 ရရှိလာသော မြန်မာ Script", "🔊 မြန်မာအသံဖိုင် (MP3 Voiceover)"]
     )
 
-  captions_json = json.loads(caption_match.group(1))
-  player_captions = captions_json.get("playerCaptionsTracklistRenderer", {})
-  tracks = player_captions.get("captionTracks", [])
+    with tab1:
+      st.subheader("မြန်မာဘာသာပြန် Script")
+      st.code(myanmar_text, height=350)
+      st.download_button(
+          "📥 Download မြန်မာ Script (.txt)",
+          data=myanmar_text.encode("utf-8-sig"),
+          file_name="myanmar_script.txt",
+          mime="text/plain; charset=utf-8",
+      )
 
-  if not tracks:
-    raise Exception("စာတန်းထိုး လမ်းကြောင်း (Caption Tracks) ရှာမတွေ့ပါ။")
-
-  # ပထမဆုံးရတဲ့ caption url ကို ယူမည်
-  track_url = tracks[0]["baseUrl"]
-  if "&fmt=json3" not in track_url:
-    track_url += "&fmt=json3"
-
-  sub_res = requests.get(track_url, headers=headers, timeout=10)
-  sub_data = sub_res.json()
-
-  transcript_list = []
-  for event in sub_data.get("events", []):
-    if "segs" in event:
-      text = "".join([seg.get("utf8", "") for seg in event["segs"]]).strip()
-      if text and text != "\n":
-        start = event.get("tStartMs", 0) / 1000.0
-        duration = event.get("dDurationMs", 0) / 1000.0
-        transcript_list.append(
-            {"text": text, "start": start, "duration": duration}
-        )
-
-  return transcript_list
-
-
-if st.button("🚀 မူရင်းအတိုင်း Transcript နှင့် မြန်မာအသံများ ထုတ်မည်", type="primary"):
-  if video_url:
-    video_id = extract_video_id(video_url)
-    if not video_id:
-      st.error("❌ YouTube Link မမှန်ပါ။")
-    else:
+    with tab2:
+      st.subheader("🔊 မြန်မာအသံဖိုင် နားဆင်ရန်နှင့် ဒေါင်းလုပ်ဆွဲရန်")
       try:
-        st.video(video_url)
+        # gTTS Character Limit အကန့်အသတ်မရှိစေရန် အပိုင်းလိုက် သို့မဟုတ် အများဆုံး ၃၀၀၀ လုံး ယူမည်
+        tts_text = myanmar_text[:3000] if len(myanmar_text) > 3000 else myanmar_text
+        tts = gTTS(text=tts_text, lang="my")
+        audio_fp = io.BytesIO()
+        tts.write_to_fp(audio_fp)
+        audio_fp.seek(0)
 
-        with st.spinner(
-            "⏳ Streamlit IP Block ကျော်လွှား၍ Transcript ဆွဲထုတ်နေပါသည်..."
-        ):
-          transcript_list = get_fallback_transcript(video_id)
-
-        with st.spinner("⏳ စာကြောင်းတစ်ကြောင်းချင်းစီကို မြန်မာလို ပြောင်းလဲနေပါသည်..."):
-          processed_lines = []
-          full_myanmar_text = []
-
-          for idx, item in enumerate(transcript_list):
-            start_time = format_time(item["start"])
-            en_text = item["text"].strip()
-            my_text = translate_text(en_text)
-
-            if my_text:
-              full_myanmar_text.append(my_text)
-              processed_lines.append(
-                  {"time": start_time, "my_text": my_text, "index": idx + 1}
-              )
-            time.sleep(0.01)
-
-        st.success("✅ အောင်မြင်စွာ ဖန်တီးပြီးပါပြီ!")
-
-        if not is_vip:
-          increment_user_usage(clean_email)
-
-        combined_script = "\n".join(
-            [f"[{l['time']}] {l['my_text']}" for l in processed_lines]
+        st.audio(audio_fp, format="audio/mp3")
+        st.download_button(
+            "📥 Download MP3 အသံဖိုင်",
+            data=audio_fp,
+            file_name="myanmar_voiceover.mp3",
+            mime="audio/mp3",
         )
-        complete_raw_text = " ".join(full_myanmar_text)
-
-        tab1, tab2 = st.tabs(
-            ["🇲🇲 အချိန်အမှတ်အသားပါ Script", "🔊 အသံဖိုင်များ (Line-by-Line & Full)"]
-        )
-
-        with tab1:
-          st.subheader("အချိန်အမှတ်အသားပါ မြန်မာ Script")
-          st.code(combined_script, height=400)
-          st.download_button(
-              "📥 Download မြန်မာ Script (.txt)",
-              data=combined_script.encode("utf-8-sig"),
-              file_name="timed_myanmar_script.txt",
-              mime="text/plain; charset=utf-8",
-          )
-
-        with tab2:
-          st.subheader("🔊 မူရင်းဗီဒီယိုပုံစံ မြန်မာအသံထွက်များ")
-
-          st.markdown("##### 📌 ဗီဒီယို တစ်ခုလုံးစာ မြန်မာအသံ (Full Audio)")
-          try:
-            tts_full = gTTS(text=complete_raw_text[:3000], lang="my")
-            audio_full_fp = io.BytesIO()
-            tts_full.write_to_fp(audio_full_fp)
-            audio_full_fp.seek(0)
-            st.audio(audio_full_fp, format="audio/mp3")
-            st.download_button(
-                "📥 Download Full MP3 အသံဖိုင်",
-                data=audio_full_fp,
-                file_name="full_myanmar_voice.mp3",
-                mime="audio/mp3",
-            )
-          except Exception as e:
-            st.warning(f"Full Audio ထုတ်ယူ၍ မရပါ: {str(e)}")
-
-          st.markdown("---")
-          st.markdown("##### ⏱️ စာကြောင်းလိုက် အသံထွက် နားဆင်ရန်")
-
-          for line in processed_lines[:15]:
-            cols = st.columns([1, 4])
-            cols[0].write(f"⏱️ **{line['time']}**")
-            cols[1].write(line["my_text"])
-          st.info(
-              "💡 စာကြောင်းရေများပါက အပေါ်ရှိ Full Audio ကို တိုက်ရိုက်"
-              " အသုံးပြုနိုင်ပါသည်။"
-          )
-
       except Exception as e:
-        st.error(
-            "❌ ဤဗီဒီယိုမှ Transcript ဆွဲထုတ်၍ မရပါ (သို့) စာတန်းထိုး"
-            f" ပိတ်ထားပါသည်။ အမှားအယွင်း: {str(e)}"
-        )
+        st.error(f"အသံဖိုင် ထုတ်ယူရာတွင် အမှားရှိသည်: {str(e)}")
   else:
-    st.warning("⚠️ ကျေးဇူးပြု၍ YouTube လင့်ခ် ထည့်သွင်းပေးပါ။")
+    st.warning("⚠️ ကျေးဇူးပြု၍ စာသား သို့မဟုတ် Script ထည့်သွင်းပေးပါ။")
     
