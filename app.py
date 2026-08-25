@@ -7,7 +7,6 @@ import time
 from gtts import gTTS
 import requests
 import streamlit as st
-from youtube_transcript_api import YouTubeTranscriptApi
 
 st.set_page_config(
     page_title="YouTube to Myanmar Voice (Line-by-Line)",
@@ -171,6 +170,56 @@ def translate_text(text):
   return text
 
 
+def get_fallback_transcript(video_id):
+  """Streamlit IP Block ကို ကျော်လွှားရန် YouTube webpage ကို നേരിട്ട് ခေါ်ယူပြီး စာသားထုတ်ယူခြင်း"""
+  url = f"https://www.youtube.com/watch?v={video_id}"
+  headers = {
+      "User-Agent": (
+          "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML,"
+          " like Gecko) Chrome/120.0.0.0 Safari/537.36"
+      ),
+      "Accept-Language": "en-US,en;q=0.5",
+  }
+  response = requests.get(url, headers=headers, timeout=10)
+  html = response.text
+
+  # Captions JSON ကို ရှာဖွေခြင်း
+  caption_match = re.search(r'"captions":\s*({.+?}),"videoDetails"', html)
+  if not caption_match:
+    raise Exception(
+        "ဤဗီဒီယိုတွင် အလိုအလျောက် သို့မဟုတ် တရားဝင် စာတန်းထိုး (Transcript)"
+        " မရှိပါ။"
+    )
+
+  captions_json = json.loads(caption_match.group(1))
+  player_captions = captions_json.get("playerCaptionsTracklistRenderer", {})
+  tracks = player_captions.get("captionTracks", [])
+
+  if not tracks:
+    raise Exception("စာတန်းထိုး လမ်းကြောင်း (Caption Tracks) ရှာမတွေ့ပါ။")
+
+  # ပထမဆုံးရတဲ့ caption url ကို ယူမည်
+  track_url = tracks[0]["baseUrl"]
+  if "&fmt=json3" not in track_url:
+    track_url += "&fmt=json3"
+
+  sub_res = requests.get(track_url, headers=headers, timeout=10)
+  sub_data = sub_res.json()
+
+  transcript_list = []
+  for event in sub_data.get("events", []):
+    if "segs" in event:
+      text = "".join([seg.get("utf8", "") for seg in event["segs"]]).strip()
+      if text and text != "\n":
+        start = event.get("tStartMs", 0) / 1000.0
+        duration = event.get("dDurationMs", 0) / 1000.0
+        transcript_list.append(
+            {"text": text, "start": start, "duration": duration}
+        )
+
+  return transcript_list
+
+
 if st.button("🚀 မူရင်းအတိုင်း Transcript နှင့် မြန်မာအသံများ ထုတ်မည်", type="primary"):
   if video_url:
     video_id = extract_video_id(video_url)
@@ -180,19 +229,10 @@ if st.button("🚀 မူရင်းအတိုင်း Transcript နှင�
       try:
         st.video(video_url)
 
-        with st.spinner("⏳ မူရင်း Transcript များကို ဆွဲထုတ်နေပါသည်..."):
-          # Error မတက်စေရန် YouTubeTranscriptApi ကို အမှန်ကန်ဆုံး ပုံစံဖြင့် ခေါ်သုံးခြင်း
-          try:
-            transcript_list = YouTubeTranscriptApi.get_transcript(
-                video_id, languages=["en", "my", "auto"]
-            )
-          except Exception:
-            # ဗားရှင်းအသစ်များအတွက် အခြားနည်းလမ်းဖြင့် ဆွဲထုတ်ခြင်း
-            transcript_obj = YouTubeTranscriptApi()
-            fetched = transcript_obj.fetch(
-                video_id, languages=["en", "my", "auto"]
-            )
-            transcript_list = [{"text": d.text, "start": d.start, "duration": d.duration} for d in fetched]
+        with st.spinner(
+            "⏳ Streamlit IP Block ကျော်လွှား၍ Transcript ဆွဲထုတ်နေပါသည်..."
+        ):
+          transcript_list = get_fallback_transcript(video_id)
 
         with st.spinner("⏳ စာကြောင်းတစ်ကြောင်းချင်းစီကို မြန်မာလို ပြောင်းလဲနေပါသည်..."):
           processed_lines = []
@@ -208,7 +248,7 @@ if st.button("🚀 မူရင်းအတိုင်း Transcript နှင�
               processed_lines.append(
                   {"time": start_time, "my_text": my_text, "index": idx + 1}
               )
-            time.sleep(0.02)
+            time.sleep(0.01)
 
         st.success("✅ အောင်မြင်စွာ ဖန်တီးပြီးပါပြီ!")
 
@@ -272,3 +312,4 @@ if st.button("🚀 မူရင်းအတိုင်း Transcript နှင�
         )
   else:
     st.warning("⚠️ ကျေးဇူးပြု၍ YouTube လင့်ခ် ထည့်သွင်းပေးပါ။")
+    
