@@ -4,6 +4,7 @@ import json
 import os
 import re
 import time
+from deep_translator import GoogleTranslator
 from gtts import gTTS
 import requests
 import streamlit as st
@@ -179,40 +180,24 @@ def generate_srt(transcript_data):
 
 
 def translate_text_to_myanmar(text):
-  """တိုက်ရိုက် ဘာသာပြန်ဆိုရန် သို့မဟုတ် အဆင်မပြေပါက မူရင်းပြတ်သားစွာ ပြန်ရန်"""
+  """deep-translator ကို အသုံးပြု၍ တိကျသေချာစွာ မြန်မာလို ဘာသာပြန်ရန်"""
   if not text.strip():
     return ""
 
-  # စာသားရှည်ကြီးများကို အပိုင်းငယ်များခွဲမည် (အက္ခရာ ၅၀၀ စီ)
-  max_len = 500
+  # စာသားများကို အပိုင်းငယ်များခွဲမည် (အက္ခရာ ၄၀၀၀ စီ)
+  max_len = 4000
   chunks = [text[i : i + max_len] for i in range(0, len(text), max_len)]
   translated_chunks = []
+
+  translator = GoogleTranslator(source="en", target="my")
 
   for chunk in chunks:
     translated = None
     try:
-      # Google Translate ၏ တရားဝင် Public Endpoint ကို Header ဖြင့် တိုက်ရိုက်ခေါ်ခြင်း
-      url = "https://translate.googleapis.com/translate_a/single"
-      params = {
-          "client": "gtx",
-          "sl": "en",
-          "tl": "my",
-          "dt": "t",
-          "q": chunk,
-      }
-      headers = {"User-Agent": "Mozilla/5.0"}
-      res = requests.get(url, params=params, headers=headers, timeout=6)
-
-      if res.status_code == 200:
-        data = res.json()
-        if data and data[0]:
-          translated = "".join(
-              [item[0] for item in data[0] if item and item[0]]
-          ).strip()
+      translated = translator.translate(chunk)
     except Exception:
       pass
 
-    # အကယ်၍ ဘာသာပြန်မရပါက မူရင်း chunk ကိုသာ တိုက်ရိုက်ထည့်မည် (Error စာသား မပြတော့ပါ)
     if not translated:
       translated = chunk
 
@@ -321,7 +306,7 @@ if st.button("⚡ Script & AI Processing စတင်မည်", type="primary")
           chars = len(pure_raw_text)
           est_read_time = round(words / 150, 1)
 
-        with st.spinner("⏳ တိုက်ရိုက် ဘာသာပြန်ဆိုနေပါသည်..."):
+        with st.spinner("⏳ မြန်မာဘာသာသို့ တိကျစွာ ဘာသာပြန်ဆိုနေပါသည်..."):
           myanmar_translation = translate_text_to_myanmar(pure_raw_text)
           srt_content = generate_srt(fetched_transcript)
 
@@ -429,3 +414,4 @@ if st.button("⚡ Script & AI Processing စတင်မည်", type="primary")
         st.error(f"❌ အမှားအယွင်း ဖြစ်ပေါ်သွားပါသည်: {str(e)}")
   else:
     st.warning("⚠️ ကျေးဇူးပြု၍ YouTube Link ရိုက်ထည့်ပေးပါ။")
+          
