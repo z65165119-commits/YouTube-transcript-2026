@@ -181,9 +181,18 @@ if st.button("🚀 မူရင်းအတိုင်း Transcript နှင�
         st.video(video_url)
 
         with st.spinner("⏳ မူရင်း Transcript များကို ဆွဲထုတ်နေပါသည်..."):
-          transcript_list = YouTubeTranscriptApi.get_transcript(
-              video_id, languages=["en", "my", "auto"]
-          )
+          # Error မတက်စေရန် YouTubeTranscriptApi ကို အမှန်ကန်ဆုံး ပုံစံဖြင့် ခေါ်သုံးခြင်း
+          try:
+            transcript_list = YouTubeTranscriptApi.get_transcript(
+                video_id, languages=["en", "my", "auto"]
+            )
+          except Exception:
+            # ဗားရှင်းအသစ်များအတွက် အခြားနည်းလမ်းဖြင့် ဆွဲထုတ်ခြင်း
+            transcript_obj = YouTubeTranscriptApi()
+            fetched = transcript_obj.fetch(
+                video_id, languages=["en", "my", "auto"]
+            )
+            transcript_list = [{"text": d.text, "start": d.start, "duration": d.duration} for d in fetched]
 
         with st.spinner("⏳ စာကြောင်းတစ်ကြောင်းချင်းစီကို မြန်မာလို ပြောင်းလဲနေပါသည်..."):
           processed_lines = []
@@ -211,7 +220,6 @@ if st.button("🚀 မူရင်းအတိုင်း Transcript နှင�
         )
         complete_raw_text = " ".join(full_myanmar_text)
 
-        # Tab တွေနဲ့ ခွဲထုတ်ပြသခြင်း
         tab1, tab2 = st.tabs(
             ["🇲🇲 အချိန်အမှတ်အသားပါ Script", "🔊 အသံဖိုင်များ (Line-by-Line & Full)"]
         )
@@ -229,12 +237,9 @@ if st.button("🚀 မူရင်းအတိုင်း Transcript နှင�
         with tab2:
           st.subheader("🔊 မူရင်းဗီဒီယိုပုံစံ မြန်မာအသံထွက်များ")
 
-          # တစ်ခုလုံးအတွက် အသံဖိုင်
           st.markdown("##### 📌 ဗီဒီယို တစ်ခုလုံးစာ မြန်မာအသံ (Full Audio)")
           try:
-            tts_full = gTTS(
-                text=complete_raw_text[:3000], lang="my"
-            )  # Character limit ကာရန်
+            tts_full = gTTS(text=complete_raw_text[:3000], lang="my")
             audio_full_fp = io.BytesIO()
             tts_full.write_to_fp(audio_full_fp)
             audio_full_fp.seek(0)
@@ -251,12 +256,10 @@ if st.button("🚀 မူရင်းအတိုင်း Transcript နှင�
           st.markdown("---")
           st.markdown("##### ⏱️ စာကြောင်းလိုက် အသံထွက် နားဆင်ရန်")
 
-          # စာကြောင်းအလိုက် အသံထွက်များထုတ်ပေးရန်
-          for line in processed_lines[:15]:  # ပထမ ၁၅ ကြောင်းကို နမူနာပြမည်
-            with st.container():
-              cols = st.columns([1, 4])
-              cols[0].write(f"⏱️ **{line['time']}**")
-              cols[1].write(line["my_text"])
+          for line in processed_lines[:15]:
+            cols = st.columns([1, 4])
+            cols[0].write(f"⏱️ **{line['time']}**")
+            cols[1].write(line["my_text"])
           st.info(
               "💡 စာကြောင်းရေများပါက အပေါ်ရှိ Full Audio ကို တိုက်ရိုက်"
               " အသုံးပြုနိုင်ပါသည်။"
@@ -269,4 +272,3 @@ if st.button("🚀 မူရင်းအတိုင်း Transcript နှင�
         )
   else:
     st.warning("⚠️ ကျေးဇူးပြု၍ YouTube လင့်ခ် ထည့်သွင်းပေးပါ။")
-          
