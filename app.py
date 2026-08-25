@@ -130,7 +130,7 @@ if not is_vip and current_usage >= FREE_LIMIT:
   st.stop()
 
 # ---------------------------------------------------------
-# 🎬 YOUTUBE TRANSCRIPT EXTRACTION VIA YT-DLP
+# 🎬 YOUTUBE TRANSCRIPT EXTRACTION VIA YT-DLP (FIXED)
 # ---------------------------------------------------------
 video_url = st.text_input("🔗 YouTube ဗီဒီယိုလင့်ခ်ကို ရိုက်ထည့်ပါ:", "")
 
@@ -144,23 +144,18 @@ def get_youtube_transcript_ytdlp(url):
       "quiet": True,
   }
 
-  # Subtitles ကို တိုက်ရိုက်ဖတ်ရန် yt-dlp info ထုတ်ယူခြင်း
   with YoutubeDL(ydl_opts) as ydl:
     info = ydl.extract_info(url, download=False)
     subtitles = info.get("subtitles", {})
     auto_captions = info.get("automatic_captions", {})
 
-    # အင်္ဂလိပ် (သို့) မြန်မာ စာတန်းထိုး ရရှိနိုင်မှုကို စစ်ဆေးခြင်း
     sub_data = None
-    lang_found = None
-    for lang in ["en", "my", "en-US"]:
+    for lang in ["en", "my", "en-US", "en-GB"]:
       if lang in subtitles:
         sub_data = subtitles[lang]
-        lang_found = lang
         break
       elif lang in auto_captions:
         sub_data = auto_captions[lang]
-        lang_found = lang
         break
 
     if not sub_data:
@@ -168,35 +163,42 @@ def get_youtube_transcript_ytdlp(url):
           "ဤဗီဒီယိုတွင် တရားဝင် သို့မဟုတ် အလိုအလျောက် စာတန်းထိုး လုံးဝ မရှိပါ။"
       )
 
-    # vtt သို့မဟုတ် json3 ဖော်မတ်လင့်ခ်ကို ရှာပြီး စာသားဆွဲထုတ်ရန်
-    target_format = None
+    # vtt ဖော်မတ်ကို ဦးစားပေး ရယူရန် စစ်ဆေးခြင်း
+    vtt_url = None
     for fmt in sub_data:
-      if fmt.get("ext") in ["vtt", "json3", "srv1"]:
-        target_format = fmt
+      if fmt.get("ext") == "vtt":
+        vtt_url = fmt.get("url")
         break
 
-    if not target_format:
-      target_format = sub_data[0]
+    if not vtt_url:
+      vtt_url = sub_data[0].get("url")
 
-    sub_url = target_format.get("url")
     import requests
 
-    res = requests.get(sub_url, timeout=10)
+    res = requests.get(vtt_url, timeout=10)
     if res.status_code != 200:
       raise Exception("စာတန်းထိုးဖိုင်ကို ဒေါင်းလုပ်ဆွဲ၍ မရပါ။")
 
     content = res.text
-    # VTT ဖော်မတ်မှ စာသားသန့်စင်ခြင်း
     lines = content.split("\n")
     clean_texts = []
+
     for line in lines:
-      # အချိန်အမှတ်အသားများနှင့် VTT tags များကို ဖယ်ရှားခြင်း
-      if "-->" in line or line.startswith("WEBVTT") or line.strip().isdigit():
+      # VTT Header, Timestamps, and positioning tags များကို ဖယ်ရှားခြင်း
+      if (
+          "-->" in line
+          or line.startswith("WEBVTT")
+          or line.strip().isdigit()
+          or line.startswith("NOTE")
+        ):
         continue
       if line.strip():
-        # HTML tags တွေပါရင် ဖယ်ထုတ်ရန်
+        # HTML / VTT tags များကို ရှင်းလင်းခြင်း
         clean_line = re.sub(r"<[^>]+>", "", line).strip()
-        if clean_line and clean_line not in clean_texts:
+        # ထပ်နေသော စာသားများ မပါစေရန် စစ်ဆေးခြင်း
+        if clean_line and (
+            not clean_texts or clean_texts[-1] != clean_line
+        ):
           clean_texts.append(clean_line)
 
     return " ".join(clean_texts)
@@ -207,7 +209,7 @@ if st.button("🚀 YouTube Transcript ကို ဆွဲထုတ်မည်",
     try:
       st.video(video_url)
       with st.spinner(
-          "⏳ yt-dlp ကို အသုံးပြု၍ Transcript ဆွဲထုတ်နေပါသည်..."
+          "⏳ Transcript စာသားများကို သန့်စင်ပြီး ဆွဲထုတ်နေပါသည်..."
       ):
         transcript_text = get_youtube_transcript_ytdlp(video_url)
 
@@ -236,8 +238,8 @@ if st.button("🚀 YouTube Transcript ကို ဆွဲထုတ်မည်",
     except Exception as e:
       st.error(
           "❌ Transcript ဆွဲထုတ်၍ မရပါ။ (အမှားအယွင်း: "
-          f"{str(e)})\n\n💡 မှတ်ချက်။ ။ အချို့သော Movie Recaps"
-          " ဗီဒီယိုများတွင် မူရင်းစာတန်းထိုး လုံးဝပါရှိခြင်း မရှိတတ်ပါ။"
+          f"{str(e)})\n\n💡 မှတ်ချက်။ ။ အချို့သော ဗီဒီယိုများတွင် စာတန်းထိုး"
+          " လုံးဝပါရှိခြင်း မရှိတတ်ပါ။"
       )
   else:
     st.warning("⚠️ ကျေးဇူးပြု၍ YouTube လင့်ခ် ထည့်သွင်းပေးပါ။")
