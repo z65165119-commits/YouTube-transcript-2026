@@ -177,14 +177,11 @@ def generate_srt(transcript_data):
 
 
 def translate_safe_myanmar(text):
-  """IP Block လုံးဝမခံရဘဲ စာသားများကို တိုက်ရိုက် မြန်မာလို ဘာသာပြန်ပေးသည့် နည်းလမ်း"""
   if not text.strip():
     return ""
-
   max_len = 500
   chunks = [text[i : i + max_len] for i in range(0, len(text), max_len)]
   translated_chunks = []
-
   for chunk in chunks:
     translated = None
     try:
@@ -198,7 +195,6 @@ def translate_safe_myanmar(text):
       }
       headers = {"User-Agent": "Mozilla/5.0"}
       res = requests.get(url, params=params, headers=headers, timeout=5)
-
       if res.status_code == 200:
         data = res.json()
         if data and data[0]:
@@ -207,19 +203,15 @@ def translate_safe_myanmar(text):
           ).strip()
     except Exception:
       pass
-
-    # အကယ်၍ ဘာသာပြန်မရပါက အင်္ဂလိပ်စာကို လုံးဝမပြဘဲ မြန်မာလို အဓိပ္ပာယ်တူ စာသား သို့မဟုတ် အသင့်အတင့် ပြန်ပေးမည်
     if not translated:
-      translated = "(မြန်မာဘာသာသို့ ပြောင်းလဲနေဆဲ...)"
-
+      translated = chunk  # Fallback to original text if connection fails
     translated_chunks.append(translated)
     time.sleep(0.1)
-
   return " ".join(translated_chunks)
 
 
-def fetch_transcript_pure_myanmar(v_url, v_id):
-  # ၁။ မြန်မာစာတန်းထိုး တိုက်ရိုက်ပါရှိလျှင် ဆွဲထုတ်မည်
+def fetch_transcript_robust(v_url, v_id):
+  # ၁။ မြန်မာစာတန်းထိုး တိုက်ရိုက်ရှာမည်
   try:
     tx = YouTubeTranscriptApi.get_transcript(v_id, languages=["my"])
     if tx:
@@ -227,7 +219,7 @@ def fetch_transcript_pure_myanmar(v_url, v_id):
   except Exception:
     pass
 
-  # ၂။ မပါလျှင် အင်္ဂလိပ်စာတန်းထိုးကို ဆွဲထုတ်ပြီး Python ဖြင့် မြန်မာလို တိုက်ရိုက်ပြောင်းမည်
+  # ၂။ အင်္ဂလိပ်စာတန်းထိုး သို့မဟုတ် Auto captions ရှာပြီး မြန်မာလို ပြန်မည်
   try:
     tx = YouTubeTranscriptApi.get_transcript(
         v_id, languages=["en", "en-US", "auto"]
@@ -248,7 +240,7 @@ def fetch_transcript_pure_myanmar(v_url, v_id):
   except Exception:
     pass
 
-  # ၃။ yt-dlp ဖြင့် ဆွဲထုတ်ရန်
+  # ၃။ yt-dlp ဖြင့် ဆွဲထုတ်ရန် ကြိုးစားမည်
   ydl_opts = {
       "skip_download": True,
       "writesubtitles": True,
@@ -256,7 +248,6 @@ def fetch_transcript_pure_myanmar(v_url, v_id):
       "subtitleslangs": ["en", "my"],
       "quiet": True,
   }
-
   try:
     with yt_dlp.YoutubeDL(ydl_opts) as ydl:
       info = ydl.extract_info(v_url, download=False)
@@ -290,12 +281,26 @@ def fetch_transcript_pure_myanmar(v_url, v_id):
                 )
           if parsed_transcript:
             return parsed_transcript
+
+      # ၄။ စာတန်းထိုး လုံးဝမရှိလျှင် ဗီဒီယို Description ကို ယူပြီး မြန်မာလို ဘာသာပြန်မည်
+      description = info.get("description", "")
+      title = info.get("title", "")
+      combined_meta = (
+          f"ဗီဒီယိုခေါင်းစဉ်: {title}\n\nဖော်ပြချက်: {description[:2000]}"
+      )
+      translated_meta = translate_safe_myanmar(combined_meta)
+      return [
+          {
+              "text": translated_meta,
+              "start": 0.0,
+              "duration": float(info.get("duration", 60)),
+          }
+      ]
   except Exception:
     pass
 
   raise Exception(
-      "❌ ဤဗီဒီယိုမှ စာတန်းထိုးများကို ထုတ်ယူ၍ မရနိုင်ပါ။ အခြားဗီဒီယိုလင့်ခ်"
-      " တစ်ခုဖြင့် ထပ်မံစမ်းသပ်ပေးပါ။"
+      "❌ ဤဗီဒီယိုမှ အချက်အလက်များကို လုံးဝထုတ်ယူ၍ မရနိုင်ပါ။"
   )
 
 
@@ -309,7 +314,7 @@ if st.button("⚡ မြန်မာစာတန်းထိုး သီးသ�
         st.video(video_url)
 
         with st.spinner("⏳ မြန်မာစာတန်းထိုးများ သီးသန့် ဖန်တီးနေပါသည်..."):
-          fetched_transcript = fetch_transcript_pure_myanmar(video_url, video_id)
+          fetched_transcript = fetch_transcript_robust(video_url, video_id)
 
           script_lines = []
           pure_texts = []
@@ -346,9 +351,6 @@ if st.button("⚡ မြန်မာစာတန်းထိုး သီးသ�
 
         st.markdown("---")
 
-        # ---------------------------------------------------------
-        # 📂 TABS (မြန်မာစာ သီးသန့်)
-        # ---------------------------------------------------------
         tab1, tab2, tab3 = st.tabs([
             "🇲🇲 မြန်မာ Script သီးသန့်",
             "🤖 အနှစ်ချုပ်",
@@ -417,4 +419,4 @@ if st.button("⚡ မြန်မာစာတန်းထိုး သီးသ�
         st.error(f"❌ အမှားအယွင်း ဖြစ်ပေါ်သွားပါသည်: {str(e)}")
   else:
     st.warning("⚠️ ကျေးဇူးပြု၍ YouTube ဗီဒီယိုလင့်ခ် ရိုက်ထည့်ပေးပါ။")
-    
+        
