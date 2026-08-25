@@ -179,38 +179,47 @@ def generate_srt(transcript_data):
 
 
 def translate_text_to_myanmar(text):
-  """API Error မတက်စေရန်နှင့် တည်ငြိမ်စွာ ဘာသာပြန်ရန် သို့မဟုတ် မူရင်းပြရန်"""
+  """တိုက်ရိုက် ဘာသာပြန်ဆိုရန် သို့မဟုတ် အဆင်မပြေပါက မူရင်းပြတ်သားစွာ ပြန်ရန်"""
   if not text.strip():
     return ""
 
-  # စာသားအရှည်ကြီးကို တစ်ခါတည်း မပို့ဘဲ သေးငယ်သော စာကြောင်းများခွဲမည်
-  sentences = [s.strip() for s in text.split(". ") if s.strip()]
-  translated_sentences = []
+  # စာသားရှည်ကြီးများကို အပိုင်းငယ်များခွဲမည် (အက္ခရာ ၅၀၀ စီ)
+  max_len = 500
+  chunks = [text[i : i + max_len] for i in range(0, len(text), max_len)]
+  translated_chunks = []
 
-  for sentence in sentences:
+  for chunk in chunks:
     translated = None
-    # Google Translate API (gtx client) ကို သုံးမည်
     try:
+      # Google Translate ၏ တရားဝင် Public Endpoint ကို Header ဖြင့် တိုက်ရိုက်ခေါ်ခြင်း
       url = "https://translate.googleapis.com/translate_a/single"
-      params = {"client": "gtx", "sl": "en", "tl": "my", "q": sentence}
-      res = requests.get(url, params=params, timeout=5)
+      params = {
+          "client": "gtx",
+          "sl": "en",
+          "tl": "my",
+          "dt": "t",
+          "q": chunk,
+      }
+      headers = {"User-Agent": "Mozilla/5.0"}
+      res = requests.get(url, params=params, headers=headers, timeout=6)
+
       if res.status_code == 200:
         data = res.json()
         if data and data[0]:
           translated = "".join(
-              [item[0] for item in data[0] if item[0]]
+              [item[0] for item in data[0] if item and item[0]]
           ).strip()
     except Exception:
       pass
 
-    # အကယ်၍ API က Error တက်ပါက (သို့) Block ထားပါက မူရင်းစာသားကိုသာ ပြန်ပြမည် (Error စာသား မပြတော့ပါ)
+    # အကယ်၍ ဘာသာပြန်မရပါက မူရင်း chunk ကိုသာ တိုက်ရိုက်ထည့်မည် (Error စာသား မပြတော့ပါ)
     if not translated:
-      translated = sentence
+      translated = chunk
 
-    translated_sentences.append(translated)
-    time.sleep(0.05)
+    translated_chunks.append(translated)
+    time.sleep(0.1)
 
-  return ". ".join(translated_sentences)
+  return " ".join(translated_chunks)
 
 
 def fetch_transcript_robust(v_url, v_id):
@@ -312,7 +321,7 @@ if st.button("⚡ Script & AI Processing စတင်မည်", type="primary")
           chars = len(pure_raw_text)
           est_read_time = round(words / 150, 1)
 
-        with st.spinner("⏳ စာသားများကို စီစဉ်ဆောင်ရွက်နေပါသည်..."):
+        with st.spinner("⏳ တိုက်ရိုက် ဘာသာပြန်ဆိုနေပါသည်..."):
           myanmar_translation = translate_text_to_myanmar(pure_raw_text)
           srt_content = generate_srt(fetched_transcript)
 
@@ -420,4 +429,3 @@ if st.button("⚡ Script & AI Processing စတင်မည်", type="primary")
         st.error(f"❌ အမှားအယွင်း ဖြစ်ပေါ်သွားပါသည်: {str(e)}")
   else:
     st.warning("⚠️ ကျေးဇူးပြု၍ YouTube Link ရိုက်ထည့်ပေးပါ။")
-    
