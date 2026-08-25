@@ -2,11 +2,12 @@ from datetime import datetime
 import json
 import os
 import re
+import requests
 import streamlit as st
 from yt_dlp import YoutubeDL
 
 st.set_page_config(
-    page_title="YouTube Transcript Extractor", page_icon="📝", layout="wide"
+    page_title="YouTube to Myanmar Script", page_icon="🇲🇲", layout="wide"
 )
 
 # ---------------------------------------------------------
@@ -70,7 +71,7 @@ if "logged_in" not in st.session_state:
 col_title, col_auth = st.columns([3, 1])
 
 with col_title:
-  st.title("📝 ယူကျု့ Transcript သီးသန့် ထုတ်ယူရန်")
+  st.title("🇲🇲 ယူကျု့ ဗီဒီယိုမှ မြန်မာ Script သက်သက် ထုတ်ယူရန်")
 
 with col_auth:
   if st.session_state["logged_in"]:
@@ -129,12 +130,10 @@ if not is_vip and current_usage >= FREE_LIMIT:
   )
   st.stop()
 
-# ---------------------------------------------------------
-# 🎬 YOUTUBE TRANSCRIPT EXTRACTION VIA YT-DLP (FIXED)
-# ---------------------------------------------------------
-video_url = st.text_input("🔗 YouTube ဗီဒီယိုလင့်ခ်ကို ရိုက်ထည့်ပါ:", "")
 
-
+# ---------------------------------------------------------
+# 🛠️ HELPER FUNCTIONS
+# ---------------------------------------------------------
 def get_youtube_transcript_ytdlp(url):
   ydl_opts = {
       "skip_download": True,
@@ -163,7 +162,6 @@ def get_youtube_transcript_ytdlp(url):
           "ဤဗီဒီယိုတွင် တရားဝင် သို့မဟုတ် အလိုအလျောက် စာတန်းထိုး လုံးဝ မရှိပါ။"
       )
 
-    # vtt ဖော်မတ်ကို ဦးစားပေး ရယူရန် စစ်ဆေးခြင်း
     vtt_url = None
     for fmt in sub_data:
       if fmt.get("ext") == "vtt":
@@ -172,8 +170,6 @@ def get_youtube_transcript_ytdlp(url):
 
     if not vtt_url:
       vtt_url = sub_data[0].get("url")
-
-    import requests
 
     res = requests.get(vtt_url, timeout=10)
     if res.status_code != 200:
@@ -184,18 +180,17 @@ def get_youtube_transcript_ytdlp(url):
     clean_texts = []
 
     for line in lines:
-      # VTT Header, Timestamps, and positioning tags များကို ဖယ်ရှားခြင်း
       if (
           "-->" in line
           or line.startswith("WEBVTT")
           or line.strip().isdigit()
           or line.startswith("NOTE")
+          or "Kind:" in line
+          or "Language:" in line
         ):
         continue
       if line.strip():
-        # HTML / VTT tags များကို ရှင်းလင်းခြင်း
         clean_line = re.sub(r"<[^>]+>", "", line).strip()
-        # ထပ်နေသော စာသားများ မပါစေရန် စစ်ဆေးခြင်း
         if clean_line and (
             not clean_texts or clean_texts[-1] != clean_line
         ):
@@ -204,34 +199,70 @@ def get_youtube_transcript_ytdlp(url):
     return " ".join(clean_texts)
 
 
-if st.button("🚀 YouTube Transcript ကို ဆွဲထုတ်မည်", type="primary"):
+def translate_to_myanmar(text):
+  if not text.strip():
+    return ""
+  max_len = 4000
+  chunks = [text[i : i + max_len] for i in range(0, len(text), max_len)]
+  translated_chunks = []
+  for chunk in chunks:
+    try:
+      url = "https://translate.googleapis.com/translate_a/single"
+      params = {
+          "client": "gtx",
+          "sl": "auto",
+          "tl": "my",
+          "dt": "t",
+          "q": chunk,
+      }
+      headers = {"User-Agent": "Mozilla/5.0"}
+      res = requests.get(url, params=params, headers=headers, timeout=10)
+      if res.status_code == 200:
+        data = res.json()
+        if data and data[0]:
+          translated = "".join(
+              [item[0] for item in data[0] if item and item[0]]
+          ).strip()
+          translated_chunks.append(translated)
+    except Exception:
+      pass
+  return " ".join(translated_chunks) if translated_chunks else text
+
+
+# ---------------------------------------------------------
+# 🎬 MAIN UI & LOGIC
+# ---------------------------------------------------------
+video_url = st.text_input("🔗 YouTube ဗီဒီယိုလင့်ခ်ကို ရိုက်ထည့်ပါ:", "")
+
+if st.button("🚀 မြန်မာ Script သက်သက် ထုတ်ယူမည်", type="primary"):
   if video_url:
     try:
       st.video(video_url)
       with st.spinner(
-          "⏳ Transcript စာသားများကို သန့်စင်ပြီး ဆွဲထုတ်နေပါသည်..."
+          "⏳ ဗီဒီယို Transcript ကို ဆွဲထုတ်ပြီး မြန်မာလို ဘာသာပြန်နေပါသည်..."
       ):
-        transcript_text = get_youtube_transcript_ytdlp(video_url)
+        english_transcript = get_youtube_transcript_ytdlp(video_url)
+        myanmar_script = translate_to_myanmar(english_transcript)
 
       if not is_vip:
         increment_user_usage(clean_email)
 
-      st.success("✅ အောင်မြင်စွာ ဆွဲထုတ်ပြီးပါပြီ!")
+      st.success("✅ မြန်မာ Script အောင်မြင်စွာ ထွက်ရှိလာပါပြီ!")
 
-      words = len(transcript_text.split())
-      chars = len(transcript_text)
+      words = len(myanmar_script.split())
+      chars = len(myanmar_script)
       m1, m2 = st.columns(2)
-      m1.metric("📝 စာသားလုံးရေ", f"{words:,}")
+      m1.metric("📝 မြန်မာစာလုံးရေ", f"{words:,}")
       m2.metric("🔤 အက္ခရာရေ", f"{chars:,}")
 
       st.markdown("---")
-      st.subheader("ရရှိလာသော Transcript စာသားများ")
-      st.code(transcript_text, height=350)
+      st.subheader("🇲🇲 ရရှိလာသော မြန်မာ Script")
+      st.code(myanmar_script, height=350)
 
       st.download_button(
-          "📥 Download Transcript (.txt)",
-          data=transcript_text.encode("utf-8-sig"),
-          file_name="youtube_transcript.txt",
+          "📥 Download မြန်မာ Script (.txt)",
+          data=myanmar_script.encode("utf-8-sig"),
+          file_name="myanmar_script.txt",
           mime="text/plain; charset=utf-8",
       )
 
@@ -243,4 +274,4 @@ if st.button("🚀 YouTube Transcript ကို ဆွဲထုတ်မည်",
       )
   else:
     st.warning("⚠️ ကျေးဇူးပြု၍ YouTube လင့်ခ် ထည့်သွင်းပေးပါ။")
-    
+               
