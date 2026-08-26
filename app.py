@@ -118,7 +118,7 @@ is_vip = clean_email in allowed_emails_lower
 current_usage = get_user_usage(clean_email)
 
 # ---------------------------------------------------------
-# ⚙️ SIDEBAR - OPTIONS SETTINGS
+# ⚙️ SIDEBAR - API KEY & OPTIONS SETTINGS
 # ---------------------------------------------------------
 st.sidebar.header("👤 Account Info")
 st.sidebar.write(f"**Logged in as:**\n{clean_email}")
@@ -131,6 +131,15 @@ else:
   st.sidebar.markdown(
       "💬 **VIP ဝယ်ယူရန် ဆက်သွယ်ရန်:**\nTelegram: [@lynn_m2026](https://t.me/lynn_m2026)"
   )
+
+st.sidebar.markdown("---")
+st.sidebar.header("🔑 Google Gemini API Key")
+user_api_key = st.sidebar.text_input(
+    "API Key ထည့်ရန်",
+    value="AIzaSyChFnyloI7Jf38fAed4tfDzf954ojjep5I",
+    type="password",
+    help="သင့်ရဲ့ Gemini API Key ကို ဤနေရာတွင် ထည့်ပါ။",
+)
 
 st.sidebar.markdown("---")
 st.sidebar.header("⚙️ Options")
@@ -152,18 +161,8 @@ if not is_vip and current_usage >= FREE_LIMIT:
   st.stop()
 
 # ---------------------------------------------------------
-# 🎬 MAIN APP LOGIC & GEMINI CONFIG (Using Streamlit Secrets)
+# 🎬 MAIN APP LOGIC
 # ---------------------------------------------------------
-try:
-  GEMINI_API_KEY = st.secrets["GEMINI_API_KEY"]
-  genai.configure(api_key=GEMINI_API_KEY.strip())
-except Exception:
-  st.error(
-      "❌ Streamlit Secrets ထဲတွင် GEMINI_API_KEY ထည့်သွင်းထားခြင်း မရှိပါ။"
-      " ကျေးဇူးပြု၍ App Settings -> Secrets တွင် ထည့်ပါ။"
-  )
-  st.stop()
-
 video_url = st.text_input("🔗 YouTube Video URL ကို ရိုက်ထည့်ပါ:", "")
 
 
@@ -196,10 +195,11 @@ def generate_srt(transcript_data):
   return srt_output
 
 
-def translate_with_gemini(text_chunk):
+def translate_with_gemini(text_chunk, api_key):
   if not text_chunk.strip():
     return ""
   try:
+    genai.configure(api_key=api_key.strip())
     model = genai.GenerativeModel("gemini-1.5-flash")
     prompt = (
         "Translate the following English YouTube transcript text into natural"
@@ -244,7 +244,11 @@ def fetch_transcript_bulletproof(v_id):
 
 
 if st.button("⚡ Script & AI Processing စတင်မည်", type="primary"):
-  if video_url:
+  if not user_api_key:
+    st.warning(
+        "⚠️ ကျေးဇူးပြု၍ ဘယ်ဘက် Sidebar တွင် Google Gemini API Key ထည့်ပေးပါ။"
+    )
+  elif video_url:
     video_id = extract_video_id(video_url)
     if not video_id:
       st.error("❌ YouTube Link မမှန်ပါ။ ပြန်စစ်ပေးပါ။")
@@ -276,7 +280,7 @@ if st.button("⚡ Script & AI Processing စတင်မည်", type="primary")
           ]
           translated_chunks = []
           for chunk in text_chunks:
-            tr = translate_with_gemini(chunk)
+            tr = translate_with_gemini(chunk, user_api_key)
             translated_chunks.append(tr)
             time.sleep(0.5)
 
@@ -289,6 +293,7 @@ if st.button("⚡ Script & AI Processing စတင်မည်", type="primary")
           srt_content = generate_srt(fetched_transcript)
 
           # AI Summary
+          genai.configure(api_key=user_api_key.strip())
           sum_model = genai.GenerativeModel("gemini-1.5-flash")
           sum_prompt = (
               "Summarize the following YouTube video transcript in English"
