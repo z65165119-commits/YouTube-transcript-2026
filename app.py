@@ -115,7 +115,7 @@ is_vip = clean_email in allowed_emails_lower
 current_usage = get_user_usage(clean_email)
 
 # ---------------------------------------------------------
-# ⚙️ SIDEBAR - USER ACCOUNT & OPTIONS
+# ⚙️ SIDEBAR - USER ACCOUNT & Options
 # ---------------------------------------------------------
 st.sidebar.header("👤 Account Info")
 st.sidebar.write(f"**Logged in as:**\n{clean_email}")
@@ -140,7 +140,6 @@ summary_length = st.sidebar.select_slider(
     value="Medium",
 )
 
-# 🛑 Non-VIP တွေအတွက် ၅ ကြိမ်ပြည့်ရင် ရပ်တန့်မည့် စနစ်
 if not is_vip and current_usage >= FREE_LIMIT:
   st.error("❌ သင့်၏ အခမဲ့ ၅ ကြိမ် အသုံးပြုခွင့် ကုန်ဆုံးသွားပါပြီ။")
   st.warning(
@@ -184,7 +183,6 @@ def generate_srt(transcript_data):
   return srt_output
 
 
-# 🎯 DEEP TRANSLATOR - တစ်ကြောင်းချင်းစီ သေသေချာချာ မြန်မာလို ဘာသာပြန်ပေးမည့် စနစ်
 def translate_line_by_line(text_line):
   if not text_line.strip():
     return ""
@@ -197,21 +195,14 @@ def translate_line_by_line(text_line):
   return text_line
 
 
-def fetch_transcript_robust(v_url, v_id):
-  try:
-    tx = YouTubeTranscriptApi.get_transcript(
-        v_id, languages=["en", "en-US", "my", "auto"]
-    )
-    if tx:
-      return tx
-  except Exception:
-    pass
-
+# 🛠️ ULTRA-ROBUST TRANSCRIPT FETCHER (Auto-generated CC များပါ အသေအချာ ဆွဲထုတ်ပေးမည့်စနစ်)
+def fetch_transcript_super_robust(v_url, v_id):
+  # 1st Attempt: yt_dlp list_transcripts / subtitle extraction (Auto-captions ပါ အဖမ်းနိုင်ဆုံး)
   ydl_opts = {
       "skip_download": True,
       "writesubtitles": True,
       "writeautomaticsub": True,
-      "subtitleslangs": ["en", "my", "en-US"],
+      "subtitleslangs": ["en", "en-US", "my", "auto"],
       "quiet": True,
   }
 
@@ -221,46 +212,74 @@ def fetch_transcript_robust(v_url, v_id):
       subtitles = info.get("subtitles") or info.get("automatic_captions")
 
       if subtitles:
-        lang = None
-        for l in ["en", "en-US", "my"]:
+        lang_key = None
+        for l in ["en", "en-US", "en-GB", "auto"]:
           if l in subtitles:
-            lang = l
+            lang_key = l
             break
-        if not lang:
-          lang = list(subtitles.keys())[0]
+        if not lang_key:
+          lang_key = list(subtitles.keys())[0]
 
-        sub_data = subtitles[lang]
+        sub_formats = subtitles[lang_key]
+        json_url = None
+        for s in sub_formats:
+          ext = s.get("ext", "")
+          if "json" in ext or ext == "json3":
+            json_url = s["url"]
+            break
 
-        json_url = next(
-            (
-                s["url"]
-                for s in sub_data
-                if s.get("ext") == "json3" or "json" in s.get("ext", "")
-            ),
-            None,
-        )
+        if not json_url and sub_formats:
+          json_url = sub_formats[0]["url"]
+
         if json_url:
-          res = requests.get(json_url, timeout=10).json()
-          parsed_transcript = []
-          for event in res.get("events", []):
-            if "segs" in event:
-              text = "".join(
-                  [s.get("utf8", "") for s in event["segs"]]
-              ).strip()
-              if text and text != "\n":
-                start = event.get("tStartMs", 0) / 1000.0
-                dur = event.get("dDurationMs", 0) / 1000.0
-                parsed_transcript.append(
-                    {"text": text, "start": start, "duration": dur}
-                )
-          if parsed_transcript:
-            return parsed_transcript
+          res = requests.get(json_url, timeout=10)
+          if res.status_code == 200:
+            res_json = res.json()
+            parsed_transcript = []
+            for event in res_json.get("events", []):
+              if "segs" in event:
+                text = "".join(
+                    [s.get("utf8", "") for s in event["segs"]]
+                ).strip()
+                if text and text != "\n":
+                  start = event.get("tStartMs", 0) / 1000.0
+                  dur = event.get("dDurationMs", 0) / 1000.0
+                  parsed_transcript.append(
+                      {"text": text, "start": start, "duration": dur}
+                  )
+            if parsed_transcript:
+              return parsed_transcript
   except Exception:
     pass
 
+  # 2nd Attempt: Standard YouTubeTranscriptApi with all possible language fallbacks
+  try:
+    tx_list = YouTubeTranscriptApi.list_transcripts(v_id)
+    for transcript in tx_list:
+      fetched = transcript.translate("en").fetch()
+      if fetched:
+        return [
+            {
+                "text": entry["text"],
+                "start": entry["start"],
+                "duration": entry.get("duration", 2.0),
+            }
+            for entry in fetched
+        ]
+  except Exception:
+    try:
+      tx = YouTubeTranscriptApi.get_transcript(
+          v_id,
+          languages=["en", "en-US", "en-GB", "my", "auto", "es", "fr", "de"],
+      )
+      if tx:
+        return tx
+    except Exception:
+      pass
+
   raise Exception(
-      "ဒီဗီဒီယိုတွင် YouTube Transcript (သို့) Subtitles လုံးဝ မရှိပါ (သို့မဟုတ်"
-      " YouTube မှ တားမြစ်ထားပါသည်)။"
+      "ဒီဗီဒီယိုတွင် YouTube ၏ Closed Captions (CC) (သို့မဟုတ်) Subtitles"
+      " လုံးဝ မရရှိနိုင်ပါ သို့မဟုတ် YouTube မှ တားမြစ်ထားပါသည်။"
   )
 
 
@@ -274,24 +293,22 @@ if st.button("⚡ Script & AI Processing စတင်မည်", type="primary")
         st.video(video_url)
 
         with st.spinner(
-            "⏳ Transcript များကို ထုတ်ယူပြီး တစ်ကြောင်းချင်းစီ မြန်မာလို"
-            " ဘာသာပြန်နေပါပြီ..."
+            "⏳ ဗီဒီယို၏ Subtitles များကို အစအဆုံး ထုတ်ယူပြီး ဘာသာပြန်နေပါပြီ..."
         ):
-          fetched_transcript = fetch_transcript_robust(video_url, video_id)
+          fetched_transcript = fetch_transcript_super_robust(
+              video_url, video_id
+          )
 
           english_lines = []
           myanmar_lines = []
           raw_text_combined = ""
 
-          # လိုင်းတစ်ကြောင်းချင်းစီကို တိုက်ရိုက် ဘာသာပြန်ခြင်း
           for item in fetched_transcript:
             start_str = format_time(item["start"])
             text = item["text"].strip()
             raw_text_combined += text + " "
-
             english_lines.append(f"{start_str}  {text}")
 
-            # တစ်ကြောင်းချင်းစီ ဘာသာပြန်ရန်
             translated_my_line = translate_line_by_line(text)
             myanmar_lines.append(f"{start_str}  {translated_my_line}")
 
@@ -313,9 +330,8 @@ if st.button("⚡ Script & AI Processing စတင်မည်", type="primary")
           summary_en = ". ".join(summary_sentences) + "."
           summary_my = translate_line_by_line(summary_en)
 
-        st.success("✅ တစ်ကြောင်းချင်းစီ အောင်မြင်စွာ မြန်မာလို ဘာသာပြန်ပြီးပါပြီ!")
+        st.success("✅ အောင်မြင်စွာ ဆွဲထုတ်ပြီး ဘာသာပြန်ပြီးပါပြီ!")
 
-        # Free User ဖြစ်မှသာ Database ထဲတွင် အကြိမ်ရေ တိုးပေးမည်
         if not is_vip:
           increment_user_usage(clean_email)
 
