@@ -131,7 +131,10 @@ else:
 
 st.sidebar.markdown("---")
 st.sidebar.header("⚙️ Options")
-show_timestamp = st.sidebar.checkbox("Timestamps ထည့်ရန်", value=False)
+# Default ကို True လုပ်ပေးလိုက်ပါပြီ (ပုံထဲကအတိုင်း မိနစ်အလိုက် ပေါ်စေရန်)
+show_timestamp = st.sidebar.checkbox(
+    "Timestamps (မိနစ်အလိုက်) ထည့်ရန်", value=True
+)
 summary_length = st.sidebar.select_slider(
     "AI Summary အတိုအရှည်",
     options=["Short", "Medium", "Detailed"],
@@ -183,42 +186,19 @@ def generate_srt(transcript_data):
 
 
 # 🛠️ STABLE DIRECT API TRANSLATOR (GOOGLE TRANSLATE ENDPOINT)
-def chunked_translate(text, chunk_size=400):
+def translate_single_line(text):
   if not text.strip():
     return ""
-
-  words = text.split()
-  chunks = []
-  current_chunk = []
-  current_len = 0
-
-  for word in words:
-    current_len += len(word) + 1
-    current_chunk.append(word)
-    if current_len > chunk_size:
-      chunks.append(" ".join(current_chunk))
-      current_chunk = []
-      current_len = 0
-  if current_chunk:
-    chunks.append(" ".join(current_chunk))
-
-  translated_full = []
-  for chunk in chunks:
-    try:
-      url = f"https://translate.googleapis.com/translate_a/single?client=gtx&sl=en&tl=my&dt=t&q={requests.utils.quote(chunk)}"
-      headers = {"User-Agent": "Mozilla/5.0"}
-      response = requests.get(url, headers=headers, timeout=5)
-      if response.status_code == 200:
-        res_json = response.json()
-        translated_part = "".join([item[0] for item in res_json[0]])
-        translated_full.append(translated_part)
-      else:
-        translated_full.append(chunk)
-    except Exception:
-      translated_full.append(chunk)
-    time.sleep(0.1)
-
-  return " ".join(translated_full)
+  try:
+    url = f"https://translate.googleapis.com/translate_a/single?client=gtx&sl=en&tl=my&dt=t&q={requests.utils.quote(text)}"
+    headers = {"User-Agent": "Mozilla/5.0"}
+    response = requests.get(url, headers=headers, timeout=5)
+    if response.status_code == 200:
+      res_json = response.json()
+      return "".join([item[0] for item in res_json[0]])
+  except Exception:
+    pass
+  return text
 
 
 def fetch_transcript_robust(v_url, v_id):
@@ -297,28 +277,38 @@ if st.button("⚡ Script & AI Processing စတင်မည်", type="primary")
       try:
         st.video(video_url)
 
-        with st.spinner("⏳ Transcript နှင့် AI Data များကို ထုတ်ယူနေပါသည်..."):
+        with st.spinner(
+            "⏳ မိနစ်အလိုက် Transcript နှင့် မြန်မာဘာသာပြန်များကို"
+            " ထုတ်ယူနေပါသည်..."
+        ):
           fetched_transcript = fetch_transcript_robust(video_url, video_id)
 
           english_lines = []
+          myanmar_lines = []
           raw_text_combined = ""
+
           for item in fetched_transcript:
             start_str = format_time(item["start"])
             text = item["text"].strip()
             raw_text_combined += text + " "
+
+            # လိုင်းတစ်ကြောင်းချင်းစီ ဘာသာပြန်ခြင်း
+            translated_line = translate_single_line(text)
+
             if show_timestamp:
-              english_lines.append(f"[{start_str}] {text}")
+              english_lines.append(f"{start_str}  {text}")
+              myanmar_lines.append(f"{start_str}  {translated_line}")
             else:
               english_lines.append(text)
+              myanmar_lines.append(translated_line)
+            time.sleep(0.02)
 
           full_english_script = "\n".join(english_lines)
+          full_myanmar_script = "\n".join(myanmar_lines)
 
           words = len(raw_text_combined.split())
           chars = len(raw_text_combined)
           est_read_time = round(words / 150, 1)
-
-        with st.spinner("⏳ မြန်မာဘာသာသို့ ဘာသာပြန်ဆိုနေပါသည်..."):
-          myanmar_translation = chunked_translate(raw_text_combined)
 
           srt_content = generate_srt(fetched_transcript)
 
@@ -329,7 +319,7 @@ if st.button("⚡ Script & AI Processing စတင်မည်", type="primary")
               else (sentences[:6] if summary_length == "Medium" else sentences[:10])
           )
           summary_en = ". ".join(summary_sentences) + "."
-          summary_my = chunked_translate(summary_en)
+          summary_my = translate_single_line(summary_en)
 
         st.success("✅ အားလုံး အောင်မြင်စွာ ထုတ်ယူဘာသာပြန်ပြီးပါပြီ!")
 
@@ -345,37 +335,33 @@ if st.button("⚡ Script & AI Processing စတင်မည်", type="primary")
         st.markdown("---")
 
         tab1, tab2, tab3, tab4 = st.tabs([
+            "🇲🇲 မြန်မာ ဘာသာပြန် (Timestamps ပါ)",
             "🇬🇧 English Script",
-            "🇲🇲 မြန်မာ ဘာသာပြန်",
             "🤖 AI Summary & Recap",
             "📥 Subtitles & TTS Audio",
         ])
 
         with tab1:
-          st.subheader("English Script")
+          st.subheader("မြန်မာ ဘာသာပြန် Script (မိနစ်အလိုက်)")
           st.info(
-              "💡 ညာဘက်အပေါ်ထောင့်ရှိ **Copy icon** ကိုနှိပ်၍ တစ်ချက်တည်း"
-              " ကူးယူနိုင်ပါသည်။"
+              "💡 ပုံထဲကအတိုင်း မိနစ်/စက္ကန့် အချိန်အမှတ်အသားများနှင့်အတူ"
+              " ဖော်ပြပေးထားပါသည်။"
           )
-          st.code(full_english_script)
+          st.code(full_myanmar_script, height=400)
           st.download_button(
-              "📥 Download English Script (.txt)",
-              data=full_english_script.encode("utf-8-sig"),
-              file_name="english_script.txt",
+              "📥 Download မြန်မာ Script (.txt)",
+              data=full_myanmar_script.encode("utf-8-sig"),
+              file_name="myanmar_script_with_timestamps.txt",
               mime="text/plain; charset=utf-8",
           )
 
         with tab2:
-          st.subheader("မြန်မာ ဘာသာပြန် Script")
-          st.info(
-              "💡 ညာဘက်အပေါ်ထောင့်ရှိ **Copy icon** ကိုနှိပ်၍ တစ်ချက်တည်း"
-              " ကူးယူနိုင်ပါသည်။"
-          )
-          st.code(myanmar_translation)
+          st.subheader("English Script")
+          st.code(full_english_script, height=400)
           st.download_button(
-              "📥 Download မြန်မာ Script (.txt)",
-              data=myanmar_translation.encode("utf-8-sig"),
-              file_name="myanmar_script.txt",
+              "📥 Download English Script (.txt)",
+              data=full_english_script.encode("utf-8-sig"),
+              file_name="english_script.txt",
               mime="text/plain; charset=utf-8",
           )
 
@@ -416,3 +402,4 @@ if st.button("⚡ Script & AI Processing စတင်မည်", type="primary")
         st.error(f"❌ အမှားအယွင်း ဖြစ်ပေါ်သွားပါသည်: {str(e)}")
   else:
     st.warning("⚠️ ကျေးဇူးပြု၍ YouTube Link ရိုက်ထည့်ပေးပါ။")
+    
