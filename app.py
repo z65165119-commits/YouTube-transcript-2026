@@ -195,7 +195,8 @@ if st.button("⚡ မြန်မာ Movie Script & Voiceover ထုတ်မည
           transcript_text = fetch_transcript_text(video_id)
 
           genai.configure(api_key=active_key)
-          model = genai.GenerativeModel("gemini-2.0-flash")
+          # Updated model to gemini-3.6-flash as requested by API error logs
+          model = genai.GenerativeModel("gemini-3.6-flash")
 
           if transcript_text:
             prompt = (
