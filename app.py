@@ -158,22 +158,6 @@ def extract_video_id(url):
   return match.group(1) if match else None
 
 
-def fetch_transcript_items(v_id):
-  # Completely robust approach for youtube-transcript-api to avoid object attribute errors
-  try:
-    # Method 1: direct fetch using list_transcripts (works across all modern versions)
-    transcript_list = YouTubeTranscriptApi.list_transcripts(v_id)
-    for transcript in transcript_list:
-      return transcript.fetch()
-  except Exception:
-    try:
-      # Method 2: legacy static function
-      return YouTubeTranscriptApi.get_transcript(v_id)
-    except Exception as e:
-      st.error(f"Transcript ထုတ်ယူရာတွင် အမှားရှိပါသည်: {str(e)}")
-      return None
-
-
 if st.button("⚡ မြန်မာစာ Script ထုတ်မည်", type="primary"):
   active_key = user_api_key.strip() if user_api_key else secret_api_key
   if not active_key:
@@ -190,27 +174,34 @@ if st.button("⚡ မြန်မာစာ Script ထုတ်မည်", type="
         st.video(video_url)
         full_myanmar_script = ""
 
-        with st.spinner(
-            "⏳ YouTube Transcript များကို အပိုင်းလိုက်ခွဲ၍ Gemini AI ဖြင့်"
-            " မြန်မာလို ဘာသာပြန်ပေးနေပါပြီ..."
-        ):
-          transcript_items = fetch_transcript_items(video_id)
+        with st.spinner("⏳ YouTube Transcript ဆွဲထုတ်နေပါပြီ..."):
+          # Direct function call using fetch for transcript list
+          transcript_list = YouTubeTranscriptApi.list_transcripts(video_id)
+          transcript = None
 
-          if transcript_items:
+          # Try finding English or auto-generated English transcript
+          try:
+            transcript = transcript_list.find_transcript(["en", "en-US"])
+          except Exception:
+            for tr in transcript_list:
+              transcript = tr
+              break
+
+          if transcript:
+            transcript_items = transcript.fetch()
             genai.configure(api_key=active_key)
-            model = genai.GenerativeModel("gemini-3.5-flash")
+            model = genai.GenerativeModel("gemini-1.5-flash")
 
-            # Split into chunks of 60 lines to prevent server limits (Error 500)
             chunk_size = 60
             for i in range(0, len(transcript_items), chunk_size):
               chunk = transcript_items[i : i + chunk_size]
               chunk_text = ""
               for item in chunk:
-                start_time = int(item["start"])
+                start_time = int(item.get("start", 0))
                 minutes = start_time // 60
                 seconds = start_time % 60
                 time_str = f"[{minutes:02d}:{seconds:02d}]"
-                chunk_text += f"{time_str} {item['text'].strip()}\n"
+                chunk_text += f"{time_str} {item.get('text', '').strip()}\n"
 
               prompt = (
                   "You are an expert translator. Below is a segment of a"
@@ -218,9 +209,7 @@ if st.button("⚡ မြန်မာစာ Script ထုတ်မည်", type="
                   " spoken text line-by-line into natural, fluent, spoken-style"
                   " Myanmar (Burmese) language so the user can easily read and"
                   " record their own voiceover. Keep the timestamps like [00:15]"
-                  " so the user knows when each part is spoken. Do NOT rewrite"
-                  " it as a movie recap review; just translate the spoken lines"
-                  " directly and naturally.\n\nSegment:\n"
+                  " so the user knows when each part is spoken.\n\nSegment:\n"
                   f"{chunk_text}"
               )
 
@@ -246,13 +235,10 @@ if st.button("⚡ မြန်မာစာ Script ထုတ်မည်", type="
             else:
               st.error("❌ ဘာသာပြန်ဆိုမှု အထွက် မရှိပါ။")
           else:
-            st.error(
-                "❌ ဤဗီဒီယိုတွင် Transcript (စာသားများ) ရယူ၍မရပါ သို့မဟုတ်"
-                " ပိတ်ထားခြင်း ဖြစ်နိုင်ပါသည်။"
-            )
+            st.error("❌ ဤဗီဒီယိုတွင် Transcript ရယူ၍မရပါ။")
 
       except Exception as e:
         st.error(f"❌ အမှားအယွင်း ဖြစ်ပေါ်သွားပါသည်: {str(e)}")
   else:
     st.warning("⚠️ ကျေးဇူးပြု၍ YouTube Video Link ကို ရိုက်ထည့်ပေးပါ။")
-              
+      
