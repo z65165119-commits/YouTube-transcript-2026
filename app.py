@@ -4,14 +4,10 @@ import json
 import os
 import re
 import time
+import google.generativeai as genai
 from gtts import gTTS
 import streamlit as st
 from youtube_transcript_api import YouTubeTranscriptApi
-
-try:
-  import google.generativeai as genai
-except ImportError:
-  pass
 
 st.set_page_config(
     page_title="YouTube AI Studio & Script Suite",
