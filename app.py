@@ -3,19 +3,15 @@ import io
 import json
 import os
 import re
-import subprocess
 import time
-from deep_translator import GoogleTranslator
 from gtts import gTTS
 import streamlit as st
 from youtube_transcript_api import YouTubeTranscriptApi
 
-# စာကြောင်းရေအလိုက် yt-dlp အလိုအလျောက် update လုပ်ရန်
 try:
-  import yt_dlp
+  import google.generativeai as genai
 except ImportError:
   pass
-
 
 st.set_page_config(
     page_title="YouTube AI Studio & Script Suite",
@@ -122,7 +118,7 @@ is_vip = clean_email in allowed_emails_lower
 current_usage = get_user_usage(clean_email)
 
 # ---------------------------------------------------------
-# ⚙️ SIDEBAR - USER ACCOUNT & OPTIONS
+# ⚙️ SIDEBAR - OPTIONS SETTINGS
 # ---------------------------------------------------------
 st.sidebar.header("👤 Account Info")
 st.sidebar.write(f"**Logged in as:**\n{clean_email}")
@@ -156,8 +152,12 @@ if not is_vip and current_usage >= FREE_LIMIT:
   st.stop()
 
 # ---------------------------------------------------------
-# 🎬 MAIN APP LOGIC
+# 🎬 MAIN APP LOGIC & GEMINI CONFIG
 # ---------------------------------------------------------
+# 🔑 API Key ကို တိုက်ရိုက် သတ်မှတ်ပေးခြင်း
+GEMINI_API_KEY = "AIzaSyChFnyloI7Jf38fAed4tfDzf954ojjep5I"
+genai.configure(api_key=GEMINI_API_KEY.strip())
+
 video_url = st.text_input("🔗 YouTube Video URL ကို ရိုက်ထည့်ပါ:", "")
 
 
@@ -190,24 +190,26 @@ def generate_srt(transcript_data):
   return srt_output
 
 
-def translate_line_by_line(text_line):
-  if not text_line.strip():
+def translate_with_gemini(text_chunk):
+  if not text_chunk.strip():
     return ""
   try:
-    translator = GoogleTranslator(source="en", target="my")
-    translated = translator.translate(text_line)
-    return translated if translated else text_line
-  except Exception:
-    pass
-  return text_line
+    model = genai.GenerativeModel("gemini-1.5-flash")
+    prompt = (
+        "Translate the following English YouTube transcript text into natural"
+        " and fluent Myanmar (Burmese) language. Keep the meaning accurate and"
+        " natural:\n\n"
+        f"{text_chunk}"
+    )
+    response = model.generate_content(prompt)
+    return response.text.strip() if response and response.text else text_chunk
+  except Exception as e:
+    return f"[Translation Error: {str(e)}]"
 
 
-# 🛡️ BULLET-PROOF TRANSCRIPT FETCHER (YouTube Transcript API ကို အဓိက အားထားမည့်စနစ်)
 def fetch_transcript_bulletproof(v_id):
-  # ပထမနည်းလမ်း - YouTube Transcript API ကို တိုက်ရိုက်သုံးခြင်း (အလုံခြုံဆုံးနှင့် အမြန်ဆုံး)
   try:
     tx_list = YouTubeTranscriptApi.list_transcripts(v_id)
-    # ရနိုင်သမျှ transcript ထဲက English ကို ဦးစားပေးထုတ်မည်
     for t in tx_list:
       fetched = t.fetch()
       if fetched:
@@ -222,7 +224,6 @@ def fetch_transcript_bulletproof(v_id):
   except Exception:
     pass
 
-  # ဒုတိယနည်းလမ်း - get_transcript ဖြင့် တိုက်ရိုက်ဆွဲရန်
   try:
     tx = YouTubeTranscriptApi.get_transcript(v_id, languages=["en", "auto"])
     if tx:
@@ -246,12 +247,12 @@ if st.button("⚡ Script & AI Processing စတင်မည်", type="primary")
         st.video(video_url)
 
         with st.spinner(
-            "⏳ ဗီဒီယို၏ Subtitles များကို အစအဆုံး ထုတ်ယူပြီး ဘာသာပြန်နေပါပြီ..."
+            "⏳ ဗီဒီယို၏ Subtitles များကို ထုတ်ယူပြီး Gemini AI ဖြင့်"
+            " ဘာသာပြန်နေပါပြီ..."
         ):
           fetched_transcript = fetch_transcript_bulletproof(video_id)
 
           english_lines = []
-          myanmar_lines = []
           raw_text_combined = ""
 
           for item in fetched_transcript:
@@ -260,11 +261,20 @@ if st.button("⚡ Script & AI Processing စတင်မည်", type="primary")
             raw_text_combined += text + " "
             english_lines.append(f"{start_str}  {text}")
 
-            translated_my_line = translate_line_by_line(text)
-            myanmar_lines.append(f"{start_str}  {translated_my_line}")
-
           full_english_script = "\n".join(english_lines)
-          full_myanmar_script = "\n".join(myanmar_lines)
+
+          chunk_size = 3000
+          text_chunks = [
+              raw_text_combined[i : i + chunk_size]
+              for i in range(0, len(raw_text_combined), chunk_size)
+          ]
+          translated_chunks = []
+          for chunk in text_chunks:
+            tr = translate_with_gemini(chunk)
+            translated_chunks.append(tr)
+            time.sleep(0.5)
+
+          full_myanmar_script = "\n".join(translated_chunks)
 
           words = len(raw_text_combined.split())
           chars = len(raw_text_combined)
@@ -272,16 +282,20 @@ if st.button("⚡ Script & AI Processing စတင်မည်", type="primary")
 
           srt_content = generate_srt(fetched_transcript)
 
-          sentences = raw_text_combined.split(". ")
-          summary_sentences = (
-              sentences[:3]
-              if summary_length == "Short"
-              else (sentences[:6] if summary_length == "Medium" else sentences[:10])
+          # AI Summary
+          sum_model = genai.GenerativeModel("gemini-1.5-flash")
+          sum_prompt = (
+              "Summarize the following YouTube video transcript in English"
+              f" ({summary_length} version) and also provide a Myanmar"
+              " translation of the summary:"
+              f"\n\n{raw_text_combined[:5000]}"
           )
-          summary_en = ". ".join(summary_sentences) + "."
-          summary_my = translate_line_by_line(summary_en)
+          sum_res = sum_model.generate_content(sum_prompt)
+          summary_text = (
+              sum_res.text if sum_res and sum_res.text else "Summary not available."
+          )
 
-        st.success("✅ အောင်မြင်စွာ ဆွဲထုတ်ပြီး ဘာသာပြန်ပြီးပါပြီ!")
+        st.success("✅ အောင်မြင်စွာ ဆွဲထုတ်ပြီး Gemini AI ဖြင့် ဘာသာပြန်ပြီးပါပြီ!")
 
         if not is_vip:
           increment_user_usage(clean_email)
@@ -294,19 +308,19 @@ if st.button("⚡ Script & AI Processing စတင်မည်", type="primary")
         st.markdown("---")
 
         tab1, tab2, tab3, tab4 = st.tabs([
-            "🇲🇲 မြန်မာ ဘာသာပြန် (Timestamps ပါ)",
+            "🇲🇲 မြန်မာ ဘာသာပြန် Script",
             "🇬🇧 English Script",
-            "🤖 AI Summary & Recap",
+            "🤖 Gemini AI Summary",
             "📥 Subtitles & TTS Audio",
         ])
 
         with tab1:
-          st.subheader("မြန်မာ ဘာသာပြန် Script (မိနစ်အလိုက်)")
+          st.subheader("မြန်မာ ဘာသာပြန် Script (Gemini AI)")
           st.code(full_myanmar_script, height=400)
           st.download_button(
               "📥 Download မြန်မာ Script (.txt)",
               data=full_myanmar_script.encode("utf-8-sig"),
-              file_name="myanmar_script_with_timestamps.txt",
+              file_name="myanmar_script_gemini.txt",
               mime="text/plain; charset=utf-8",
           )
 
@@ -321,11 +335,8 @@ if st.button("⚡ Script & AI Processing စတင်မည်", type="primary")
           )
 
         with tab3:
-          st.subheader("🤖 AI Script Summary & Story Recap")
-          st.write("**English Summary:**")
-          st.code(summary_en)
-          st.write("**မြန်မာအနှစ်ချုပ် / ပြန်လည်ဆန်းသစ်ချက်:**")
-          st.code(summary_my)
+          st.subheader("🤖 Gemini AI Script Summary & Story Recap")
+          st.write(summary_text)
 
         with tab4:
           st.subheader("🎬 SRT Subtitle & Myanmar Voiceover (TTS)")
@@ -344,7 +355,7 @@ if st.button("⚡ Script & AI Processing စတင်မည်", type="primary")
           with col_audio:
             st.write("🔊 **Myanmar Text-to-Speech (TTS Voiceover):**")
             try:
-              tts_text = summary_my[:300]
+              tts_text = full_myanmar_script[:300]
               tts = gTTS(text=tts_text, lang="my")
               audio_fp = io.BytesIO()
               tts.write_to_fp(audio_fp)
