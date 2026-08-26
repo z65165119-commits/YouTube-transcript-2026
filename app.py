@@ -1,13 +1,11 @@
 from datetime import datetime
 import io
+import json
 import os
 import re
-import tempfile
 import google.generativeai as genai
 from gtts import gTTS
-from moviepy.editor import AudioFileClip, VideoFileClip
 import streamlit as st
-from yt_dlp import YoutubeDL
 from youtube_transcript_api import YouTubeTranscriptApi
 
 st.set_page_config(
@@ -26,8 +24,6 @@ def load_db():
   if os.path.exists(DB_FILE):
     try:
       with open(DB_FILE, "r", encoding="utf-8") as f:
-        import json
-
         return json.load(f)
     except Exception:
       return {}
@@ -36,8 +32,6 @@ def load_db():
 
 def save_db(db):
   with open(DB_FILE, "w", encoding="utf-8") as f:
-    import json
-
     json.dump(db, f, ensure_ascii=False, indent=4)
 
 
@@ -151,9 +145,11 @@ user_api_key = st.sidebar.text_input(
 )
 
 st.sidebar.markdown("---")
-st.sidebar.header("⚙️ Video Options")
-voice_speed = st.sidebar.selectbox(
-    "အသံထွက် အမြန်နှုန်း", ["Normal", "Fast (1.25x)"], index=0
+st.sidebar.header("⚙️ Options")
+summary_length = st.sidebar.select_slider(
+    "AI Summary အတိုအရှည်",
+    options=["Short", "Medium", "Detailed"],
+    value="Medium",
 )
 
 if not is_vip and current_usage >= FREE_LIMIT:
@@ -172,17 +168,19 @@ def extract_video_id(url):
   return match.group(1) if match else None
 
 
-def download_youtube_video(url, output_path):
-  ydl_opts = {
-      "format": "best[ext=mp4]/best",
-      "outtmpl": output_path,
-      "quiet": True,
-  }
-  with YoutubeDL(ydl_opts) as ydl:
-    ydl.download([url])
+def fetch_transcript_text(v_id):
+  try:
+    tx_list = YouTubeTranscriptApi.list_transcripts(v_id)
+    for t in tx_list:
+      fetched = t.fetch()
+      if fetched:
+        return " ".join([entry["text"].strip() for entry in fetched])
+  except Exception:
+    pass
+  return None
 
 
-if st.button("⚡ Ready-to-Post Recap Video ထုတ်မည်", type="primary"):
+if st.button("⚡ Ready-to-Post Script & Audio ထုတ်မည်", type="primary"):
   if not user_api_key:
     st.warning("⚠️ ကျေးဇူးပြု၍ Google Gemini API Key ထည့်ပေးပါ။")
   elif video_url:
@@ -191,124 +189,113 @@ if st.button("⚡ Ready-to-Post Recap Video ထုတ်မည်", type="primar
       st.error("❌ YouTube Link မမှန်ပါ။ ပြန်စစ်ပေးပါ။")
     else:
       try:
-        with tempfile.TemporaryDirectory() as tmpdir:
-          video_filename = os.path.join(tmpdir, "source_video.mp4")
-          output_video_filename = os.path.join(tmpdir, "final_recap_video.mp4")
-          audio_filename = os.path.join(tmpdir, "myanmar_voice.mp3")
+        st.video(video_url)
+        full_myanmar_script = ""
+        raw_text_combined = ""
 
-          with st.spinner(
-              "⏳ ၁/၄ - YouTube ဗီဒီယိုနှင့် အချက်အလက်များကို"
-              " ဆွဲထုတ်နေပါပြီ..."
-          ):
-            try:
-              download_youtube_video(video_url, video_filename)
-            except Exception:
-              st.error(
-                  "❌ YouTube ဗီဒီယိုကို တိုက်ရိုက်ဒေါင်းလုဒ်ဆွဲ၍ မရပါ။"
-                  " (Server ကန့်သတ်ချက်)"
-              )
-              st.stop()
+        with st.spinner(
+            "⏳ YouTube ဗီဒီယိုမှ ဇာတ်လမ်းများကို ဆွဲထုတ်ပြီး Gemini AI ဖြင့်"
+            " မြန်မာလို ရေးသားနေပါပြီ..."
+        ):
+          transcript_text = fetch_transcript_text(video_id)
 
-            # Transcript ဖမ်းယူခြင်း
-            transcript_text = ""
-            try:
-              tx_list = YouTubeTranscriptApi.list_transcripts(video_id)
-              for t in tx_list:
-                fetched = t.fetch()
-                if fetched:
-                  transcript_text = " ".join(
-                      [entry["text"].strip() for entry in fetched]
-                  )
-                  break
-            except Exception:
-              pass
+          genai.configure(api_key=user_api_key.strip())
+          model = genai.GenerativeModel("gemini-2.5-flash")
 
-          with st.spinner(
-              "⏳ ၂/၄ - Gemini AI ဖြင့် မြန်မာ Movie Recap Script"
-              " ရေးသားနေပါပြီ..."
-          ):
-            genai.configure(api_key=user_api_key.strip())
-            model = genai.GenerativeModel("gemini-2.5-flash")
-
-            if not transcript_text:
-              transcript_text = (
-                  "Cinematic movie recap story based on link: " + video_url
-              )
-
+          if transcript_text:
+            raw_text_combined = transcript_text
             prompt = (
-                "Translate and rewrite the following into an engaging, natural,"
-                " and smooth Myanmar (Burmese) voiceover script for a TikTok"
-                " movie recap video. Keep it punchy and exciting:\n\n"
-                f"{transcript_text[:12000]}"
+                "You are a professional YouTube Movie Recap scriptwriter."
+                " Read the following English YouTube transcript and rewrite it"
+                " into an extremely engaging, natural, and fluent Myanmar"
+                " (Burmese) script suitable for a voiceover movie recap video:\n\n"
+                f"{raw_text_combined[:15000]}"
             )
             response = model.generate_content(prompt)
-            myanmar_script = (
+            full_myanmar_script = (
                 response.text.strip()
                 if response and response.text
-                else "ဇာတ်လမ်းအကျဉ်း"
+                else raw_text_combined
             )
-
-          with st.spinner(
-              "⏳ ၃/၄ - မြန်မာအသံဖိုင် (Voiceover) ဖန်တီးနေပါပြီ..."
-          ):
-            # gTTS ဖြင့် မြန်မာအသံထုတ်ယူခြင်း (အက္ခရာ ၄၀၀၀ ကန့်သတ်ချက်ကို ထိန်းချုပ်ရန်)
-            tts_text = myanmar_script[
-                :3000
-            ]  # First part for audio generation
-            tts = gTTS(text=tts_text, lang="my", slow=False)
-            tts.save(audio_filename)
-
-          with st.spinner(
-              "⏳ ၄/၄ - မူရင်းဗီဒီယိုနှင့် မြန်မာအသံကို ပေါင်းစပ်နေပါပြီ"
-              " (Video Rendering)..."
-          ):
-            # MoviePy ဖြင့် ဗီဒီယိုနှင့် အသံပေါင်းစပ်ခြင်း
-            video_clip = VideoFileClip(video_filename)
-            audio_clip = AudioFileClip(audio_filename)
-
-            # အသံအရှည်နဲ့ ဗီဒီယိုအရှည် ကိုက်ညီအောင် လုပ်ဆောင်ခြင်း
-            if audio_clip.duration < video_clip.duration:
-              video_clip = video_clip.subclip(0, audio_clip.duration)
-            else:
-              # ဗီဒီယိုထက် အသံကပိုရှည်ရင် ဗီဒီယိုကို Loop လုပ်ရန် (သို့မဟုတ် အသံအတိုင်းထားရန်)
-              pass
-
-            final_clip = video_clip.set_audio(audio_clip)
-            final_clip.write_videofile(
-                output_video_filename,
-                codec="libx264",
-                audio_codec="aac",
-                fps=24,
-                preset="ultrafast",
-                logger=None,
+          else:
+            prompt = (
+                f"Please analyze the YouTube video at this URL: {video_url}."
+                " Provide a detailed movie recap script in natural Myanmar"
+                " language."
             )
+            response = model.generate_content(prompt)
+            full_myanmar_script = (
+                response.text.strip()
+                if response and response.text
+                else "Could not process video."
+            )
+            raw_text_combined = full_myanmar_script
 
-            # ဖိုင်ကို Read လုပ်ရန်
-            with open(output_video_filename, "rb") as f:
-              video_bytes = f.read()
+          words = len(raw_text_combined.split())
+          est_read_time = round(words / 150, 1)
 
-          st.success("🎉 အောင်မြင်ပါပြီ! Ready-to-post Recap Video ထွက်လာပါပြီ။")
-
-          if not is_vip:
-            increment_user_usage(clean_email)
-
-          # ဗီဒီယို Preview ပြသရန်နှင့် Download ခလုတ်
-          st.video(output_video_filename)
-
-          st.download_button(
-              label="📥 Download Ready-to-Post Video (.mp4)",
-              data=video_bytes,
-              file_name="myanmar_movie_recap.mp4",
-              mime="video/mp4",
+          sum_model = genai.GenerativeModel("gemini-2.5-flash")
+          sum_prompt = (
+              "Provide a short captivating summary and logline of this movie in"
+              f" both English and Myanmar ({summary_length} version):"
+              f"\n\n{raw_text_combined[:4000]}"
+          )
+          sum_res = sum_model.generate_content(sum_prompt)
+          summary_text = (
+              sum_res.text if sum_res and sum_res.text else "Summary not available."
           )
 
-          with st.expander("📝 ထွက်လာသော မြန်မာ Script ကို ကြည့်ရန်"):
-            st.write(myanmar_script)
+        st.success("👑 Movie Recap Script နှင့် အသံဖိုင် အောင်မြင်စွာ ထွက်ရှိလာပါပြီ!")
+
+        if not is_vip:
+          increment_user_usage(clean_email)
+
+        m1, m2 = st.columns(2)
+        m1.metric("📝 ခန့်မှန်း စာလုံးရေ (Words)", f"{words:,}")
+        m2.metric("⏱️ ပြောဆိုဖတ်ရှုချိန်", f"{est_read_time} မိနစ်ခန့်")
+
+        st.markdown("---")
+
+        tab1, tab2, tab3 = st.tabs([
+            "🇲🇲 မြန်မာ Movie Recap Script",
+            "🤖 AI Story Summary",
+            "🔊 Audio Voiceover (TTS)",
+        ])
+
+        with tab1:
+          st.subheader("မြန်မာ Movie Recap Script")
+          st.code(full_myanmar_script, height=450)
+          st.download_button(
+              "📥 Download မြန်မာ Script (.txt)",
+              data=full_myanmar_script.encode("utf-8-sig"),
+              file_name="movie_recap_myanmar_script.txt",
+              mime="text/plain; charset=utf-8",
+          )
+
+        with tab2:
+          st.subheader("🤖 AI Story Summary & Logline")
+          st.write(summary_text)
+
+        with tab3:
+          st.subheader("🔊 Myanmar Text-to-Speech (Audio Voiceover)")
+          try:
+            tts_text = full_myanmar_script[:3000]
+            tts = gTTS(text=tts_text, lang="my")
+            audio_fp = io.BytesIO()
+            tts.write_to_fp(audio_fp)
+            audio_fp.seek(0)
+            st.audio(audio_fp, format="audio/mp3")
+            st.download_button(
+                "📥 Download Voiceover MP3",
+                data=audio_fp,
+                file_name="myanmar_voiceover.mp3",
+                mime="audio/mp3",
+            )
+          except Exception as e:
+            st.warning(f"Audio TTS မရရှိပါ: {str(e)}")
 
       except Exception as e:
-        st.error(
-            f"❌ ဗီဒီယိုထုတ်လုပ်ရာတွင် အမှားအယွင်း ဖြစ်ပေါ်သွားပါသည်: {str(e)}"
-        )
+        st.error(f"❌ အမှားအယွင်း ဖြစ်ပေါ်သွားပါသည်: {str(e)}")
   else:
     st.warning("⚠️ ကျေးဇူးပြု၍ YouTube Movie Recap Link ကို ရိုက်ထည့်ပေးပါ။")
-            
+              
