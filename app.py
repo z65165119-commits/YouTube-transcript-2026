@@ -1,5 +1,5 @@
 from datetime import datetime
-from deep_translator import GoogleTranslator, MyMemoryTranslator
+from deep_translator import GoogleTranslator
 import json
 import os
 import re
@@ -200,33 +200,41 @@ def get_youtube_transcript_ytdlp(url):
     return " ".join(clean_texts)
 
 
-def translate_to_myanmar_robust(text):
+def translate_to_myanmar_fast(text):
   if not text.strip():
     return ""
 
-  # စာသားတွေကို ဝါကျအလိုက် (Sentence-by-sentence) ခွဲထုတ်ပြီး ဘာသာပြန်ခြင်းက အတိကျဆုံးဖြစ်ပါတယ်
-  sentences = re.split(r"(?<=[.!?])\s+", text)
-  translated_sentences = []
+  # စာသားတွေကို စကားလုံးရေ အတိုအထوالလေးတွေ (အများဆုံး စာလုံးရေ ၄၀၀ ခန့်စီ) ပိုင်းထုတ်မည်
+  words = text.split()
+  chunks = []
+  current_chunk = []
+  current_length = 0
 
-  # စာကြောင်းရေ များရင် အပိုင်းလိုက်ခွဲမည် (MyMemoryTranslator က တစ်ခါတאလေ စာလုံးရေ အကန့်အသတ်ရှိတတ်လို့ပါ)
-  for sentence in sentences:
-    if not sentence.strip():
-      continue
+  for word in words:
+    current_length += len(word) + 1
+    current_chunk.append(word)
+    if current_length > 400:
+      chunks.append(" ".join(current_chunk))
+      current_chunk = []
+      current_length = 0
+
+  if current_chunk:
+    chunks.append(" ".join(current_chunk))
+
+  translator = GoogleTranslator(source="en", target="my")
+  translated_chunks = []
+
+  for chunk in chunks:
     try:
-      # GoogleTranslator ကို သုံးမည်၊ အကယ်၍ error တက်ရင် MyMemoryTranslator သို့ ပြောင်းမည်
-      translated = GoogleTranslator(source="en", target="my").translate(
-          sentence
-      )
-      if not translated or translated == sentence:
-        translated = MyMemoryTranslator(
-            source="english", target="myanmar"
-        ).translate(sentence)
-
-      translated_sentences.append(translated if translated else sentence)
+      translated = translator.translate(chunk)
+      if translated:
+        translated_chunks.append(translated)
+      else:
+        translated_chunks.append(chunk)
     except Exception:
-      translated_sentences.append(sentence)
+      translated_chunks.append(chunk)
 
-  return " ".join(translated_sentences)
+  return " ".join(translated_chunks)
 
 
 # ---------------------------------------------------------
@@ -238,11 +246,9 @@ if st.button("🚀 မြန်မာ Script သက်သက် ထုတ်ယ�
   if video_url:
     try:
       st.video(video_url)
-      with st.spinner(
-          "⏳ Transcript ဆွဲထုတ်ပြီး မြန်မာလို ဝါကျလိုက် ဘာသာပြန်နေပါသည်..."
-      ):
+      with st.spinner("⏳ Transcript ဆွဲထုတ်ပြီး မြန်မာလို ဘာသာပြန်နေပါပြီ..."):
         english_transcript = get_youtube_transcript_ytdlp(video_url)
-        myanmar_script = translate_to_myanmar_robust(english_transcript)
+        myanmar_script = translate_to_myanmar_fast(english_transcript)
 
       if not is_vip:
         increment_user_usage(clean_email)
@@ -274,4 +280,4 @@ if st.button("🚀 မြန်မာ Script သက်သက် ထုတ်ယ�
       )
   else:
     st.warning("⚠️ ကျေးဇူးပြု၍ YouTube လင့်ခ် ထည့်သွင်းပေးပါ။")
-    
+      
