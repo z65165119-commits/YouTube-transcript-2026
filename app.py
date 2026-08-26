@@ -152,11 +152,17 @@ if not is_vip and current_usage >= FREE_LIMIT:
   st.stop()
 
 # ---------------------------------------------------------
-# 🎬 MAIN APP LOGIC & GEMINI CONFIG
+# 🎬 MAIN APP LOGIC & GEMINI CONFIG (Using Streamlit Secrets)
 # ---------------------------------------------------------
-# 🔑 API Key ကို တိုက်ရိုက် သတ်မှတ်ပေးခြင်း
-GEMINI_API_KEY = "AIzaSyChFnyloI7Jf38fAed4tfDzf954ojjep5I"
-genai.configure(api_key=GEMINI_API_KEY.strip())
+try:
+  GEMINI_API_KEY = st.secrets["GEMINI_API_KEY"]
+  genai.configure(api_key=GEMINI_API_KEY.strip())
+except Exception:
+  st.error(
+      "❌ Streamlit Secrets ထဲတွင် GEMINI_API_KEY ထည့်သွင်းထားခြင်း မရှိပါ။"
+      " ကျေးဇူးပြု၍ App Settings -> Secrets တွင် ထည့်ပါ။"
+  )
+  st.stop()
 
 video_url = st.text_input("🔗 YouTube Video URL ကို ရိုက်ထည့်ပါ:", "")
 
@@ -368,4 +374,4 @@ if st.button("⚡ Script & AI Processing စတင်မည်", type="primary")
         st.error(f"❌ အမှားအယွင်း ဖြစ်ပေါ်သွားပါသည်: {str(e)}")
   else:
     st.warning("⚠️ ကျေးဇူးပြု၍ YouTube Link ရိုက်ထည့်ပေးပါ။")
-    
+  
