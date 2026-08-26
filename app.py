@@ -199,7 +199,8 @@ if st.button("⚡ Movie Recap Script ထုတ်မည်", type="primary"):
           transcript_text = fetch_transcript_bulletproof(video_id)
 
           genai.configure(api_key=user_api_key.strip())
-          model = genai.GenerativeModel("gemini-1.5-flash")
+          # Updated model name to gemini-2.5-flash
+          model = genai.GenerativeModel("gemini-2.5-flash")
 
           if transcript_text:
             raw_text_combined = transcript_text
@@ -216,7 +217,6 @@ if st.button("⚡ Movie Recap Script ထုတ်မည်", type="primary"):
                 else raw_text_combined
             )
           else:
-            # If transcript fails, use Gemini's direct URL processing capability or fallback description analysis
             prompt = (
                 f"Please analyze the YouTube video at this URL: {video_url}."
                 " Provide a comprehensive, detailed story recap and script in"
@@ -234,8 +234,8 @@ if st.button("⚡ Movie Recap Script ထုတ်မည်", type="primary"):
           words = len(raw_text_combined.split())
           est_read_time = round(words / 150, 1)
 
-          # AI Summary
-          sum_model = genai.GenerativeModel("gemini-1.5-flash")
+          # AI Summary using gemini-2.5-flash
+          sum_model = genai.GenerativeModel("gemini-2.5-flash")
           sum_prompt = (
               "Provide a short summary/logline of this movie recap in both"
               f" English and Myanmar ({summary_length} version):"
@@ -293,4 +293,4 @@ if st.button("⚡ Movie Recap Script ထုတ်မည်", type="primary"):
         st.error(f"❌ အမှားအယွင်း ဖြစ်ပေါ်သွားပါသည်: {str(e)}")
   else:
     st.warning("⚠️ ကျေးဇူးပြု၍ YouTube Movie Recap Link ကို ရိုက်ထည့်ပေးပါ။")
-        
+                                                                 
