@@ -172,8 +172,8 @@ def fetch_transcript_with_timestamps(v_id):
           time_str = f"[{minutes:02d}:{seconds:02d}]"
           formatted_text += f"{time_str} {item['text'].strip()}\n"
         return formatted_text
-  except Exception:
-    pass
+  except Exception as e:
+    st.error(f"Transcript ထုတ်ယူရာတွင် အမှားရှိပါသည်: {str(e)}")
   return None
 
 
@@ -194,58 +194,56 @@ if st.button("⚡ မြန်မာစာ Script ထုတ်မည်", type="
         full_myanmar_script = ""
 
         with st.spinner(
-            "⏳ YouTube Transcript စာသားများကို ဆွဲထုတ်ပြီး မြန်မာလို"
-            " ဘာသာပြန်ပေးနေပါပြီ..."
+            "⏳ YouTube Transcript စာသားများကို အလိုအလျောက် ဆွဲထုတ်ပြီး Gemini"
+            " AI ဖြင့် မြန်မာလို ဘာသာပြန်ပေးနေပါပြီ..."
         ):
           transcript_text = fetch_transcript_with_timestamps(video_id)
 
-          genai.configure(api_key=active_key)
-          model = genai.GenerativeModel("gemini-3.6-flash")
-
           if transcript_text:
+            genai.configure(api_key=active_key)
+            model = genai.GenerativeModel("gemini-3.5-flash")
+
             prompt = (
                 "You are an expert translator. Below is the full English"
-                " timestamped transcript of a YouTube video.\nTranslate the"
+                " timestamped transcript of a YouTube video. Translate the"
                 " spoken text line-by-line into natural, fluent, spoken-style"
                 " Myanmar (Burmese) language so the user can easily read and"
-                " record their own voiceover.\nKeep the timestamps like [00:15]"
-                " so the user knows when each part is spoken.\nDo NOT rewrite"
+                " record their own voiceover. Keep the timestamps like [00:15]"
+                " so the user knows when each part is spoken. Do NOT rewrite"
                 " it as a movie recap review; just translate the spoken lines"
                 " directly and naturally.\n\nTranscript:\n"
                 f"{transcript_text[:15000]}"
             )
-          else:
-            prompt = (
-                f"The user provided this YouTube video link: {video_url}."
-                " Provide a full line-by-line spoken-style Myanmar (Burmese)"
-                " translation script of what is likely being said in this video"
-                " for voiceover recording."
+
+            response = model.generate_content(prompt)
+            full_myanmar_script = (
+                response.text.strip()
+                if response and response.text
+                else "မြန်မာပြန် စာသား ထုတ်ယူ၍မရပါ။"
             )
 
-          response = model.generate_content(prompt)
-          full_myanmar_script = (
-              response.text.strip()
-              if response and response.text
-              else "မြန်မာပြန် စာသား ထုတ်ယူ၍မရပါ။"
-          )
+            st.success("👑 မြန်မာစာ Script အောင်မြင်စွာ ထွက်ရှိလာပါပြီ!")
 
-        st.success("👑 မြန်မာစာ Script အောင်မြင်စွာ ထွက်ရှိလာပါပြီ!")
+            if not is_vip:
+              increment_user_usage(clean_email)
 
-        if not is_vip:
-          increment_user_usage(clean_email)
-
-        st.markdown("---")
-        st.subheader("📝 မြန်မာစာ Script (Voiceover ဖတ်ရန်)")
-        st.code(full_myanmar_script, height=500)
-        st.download_button(
-            "📥 Download မြန်မာ Script (.txt)",
-            data=full_myanmar_script.encode("utf-8-sig"),
-            file_name="youtube_myanmar_script.txt",
-            mime="text/plain; charset=utf-8",
-        )
+            st.markdown("---")
+            st.subheader("📝 မြန်မာစာ Script (Voiceover ဖတ်ရန်)")
+            st.code(full_myanmar_script, height=500)
+            st.download_button(
+                "📥 Download မြန်မာ Script (.txt)",
+                data=full_myanmar_script.encode("utf-8-sig"),
+                file_name="youtube_myanmar_script.txt",
+                mime="text/plain; charset=utf-8",
+            )
+          else:
+            st.error(
+                "❌ ဤဗီဒီယိုတွင် Transcript (စာသားများ) ရယူ၍မရပါ သို့မဟုတ်"
+                " ပိတ်ထားခြင်း ဖြစ်နိုင်ပါသည်။"
+            )
 
       except Exception as e:
         st.error(f"❌ အမှားအယွင်း ဖြစ်ပေါ်သွားပါသည်: {str(e)}")
   else:
     st.warning("⚠️ ကျေးဇူးပြု၍ YouTube Video Link ကို ရိုက်ထည့်ပေးပါ။")
-          
+              
