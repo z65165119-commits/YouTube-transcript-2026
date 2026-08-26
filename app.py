@@ -200,8 +200,8 @@ if st.button("⚡ စကားပြော မြန်မာပြန် Script
           transcript_text = fetch_transcript_with_timestamps(video_id)
 
           genai.configure(api_key=active_key)
-          # Gemini model configuration
-          model = genai.GenerativeModel("gemini-1.5-flash")
+          # Updated to gemini-3.6-flash as per the latest API specs
+          model = genai.GenerativeModel("gemini-3.6-flash")
 
           if transcript_text:
             prompt = (
@@ -249,4 +249,4 @@ if st.button("⚡ စကားပြော မြန်မာပြန် Script
         st.error(f"❌ အမှားအယွင်း ဖြစ်ပေါ်သွားပါသည်: {str(e)}")
   else:
     st.warning("⚠️ ကျေးဇူးပြု၍ YouTube Video Link ကို ရိုက်ထည့်ပေးပါ။")
-          
+            
