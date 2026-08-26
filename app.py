@@ -132,8 +132,8 @@ st.sidebar.header("🔑 Google Gemini API Key")
 
 secret_api_key = ""
 try:
-  if "GEMINI_API_KEY" in st.secrets:
-    secret_api_key = st.secrets["GEMINI_API_KEY"]
+  if "GEMIN_API_KEY" in st.secrets:
+    secret_api_key = st.secrets["GEMIN_API_KEY"]
 except Exception:
   pass
 
@@ -203,7 +203,8 @@ if st.button("⚡ Script & Voiceover ထုတ်မည်", type="primary"):
           transcript_text = fetch_transcript_text(video_id)
 
           genai.configure(api_key=user_api_key.strip())
-          model = genai.GenerativeModel("gemini-1.5-flash")
+          # Updated to gemini-2.5-flash or gemini-2.0-flash standard model name
+          model = genai.GenerativeModel("gemini-2.0-flash")
 
           if transcript_text:
             raw_text_combined = transcript_text
@@ -235,7 +236,7 @@ if st.button("⚡ Script & Voiceover ထုတ်မည်", type="primary"):
           words = len(raw_text_combined.split())
           est_read_time = round(words / 150, 1)
 
-          sum_model = genai.GenerativeModel("gemini-1.5-flash")
+          sum_model = genai.GenerativeModel("gemini-2.0-flash")
           sum_prompt = (
               "Provide a short captivating summary and logline of this movie in"
               f" both English and Myanmar:\n\n{raw_text_combined[:4000]}"
@@ -285,7 +286,6 @@ if st.button("⚡ Script & Voiceover ထုတ်မည်", type="primary"):
 
           try:
             tts_text = full_myanmar_script[:3000]
-            # gTTS slow=False ဖြင့် အသံထုတ်ယူခြင်း
             tts = gTTS(text=tts_text, lang="my", slow=False)
             audio_fp = io.BytesIO()
             tts.write_to_fp(audio_fp)
@@ -305,4 +305,4 @@ if st.button("⚡ Script & Voiceover ထုတ်မည်", type="primary"):
         st.error(f"❌ အမှားအယွင်း ဖြစ်ပေါ်သွားပါသည်: {str(e)}")
   else:
     st.warning("⚠️ ကျေးဇူးပြု၍ YouTube Movie Recap Link ကို ရိုက်ထည့်ပေးပါ။")
-            
+    
