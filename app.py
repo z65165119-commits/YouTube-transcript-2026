@@ -1,4 +1,5 @@
 from datetime import datetime
+from deep_translator import GoogleTranslator
 import json
 import os
 import re
@@ -132,7 +133,7 @@ if not is_vip and current_usage >= FREE_LIMIT:
 
 
 # ---------------------------------------------------------
-# 🛠️ HELPER FUNCTIONS (DIRECT GOOGLE TRANSLATE API URL)
+# 🛠️ HELPER FUNCTIONS
 # ---------------------------------------------------------
 def get_youtube_transcript_ytdlp(url):
   ydl_opts = {
@@ -199,42 +200,16 @@ def get_youtube_transcript_ytdlp(url):
     return " ".join(clean_texts)
 
 
-def translate_text_direct(text):
+def translate_to_myanmar(text):
   if not text.strip():
     return ""
-
-  # စာသားများကို အပိုင်းလေးများခွဲ၍ တိုက်ရိုက် Google Translate သို့ တောင်းဆိုခြင်း
-  words = text.split()
-  chunks = []
-  current_chunk = []
-  current_len = 0
-
-  for word in words:
-    current_len += len(word) + 1
-    current_chunk.append(word)
-    if current_len > 300:
-      chunks.append(" ".join(current_chunk))
-      current_chunk = []
-      current_len = 0
-  if current_chunk:
-    chunks.append(" ".join(current_chunk))
-
-  translated_full = []
-  for chunk in chunks:
-    try:
-      url = f"https://translate.googleapis.com/translate_a/single?client=gtx&sl=en&tl=my&dt=t&q={requests.utils.quote(chunk)}"
-      headers = {"User-Agent": "Mozilla/5.0"}
-      response = requests.get(url, headers=headers, timeout=5)
-      if response.status_code == 200:
-        res_json = response.json()
-        translated_part = "".join([item[0] for item in res_json[0]])
-        translated_full.append(translated_part)
-      else:
-        translated_full.append(chunk)
-    except Exception:
-      translated_full.append(chunk)
-
-  return " ".join(translated_full)
+  try:
+    translator = GoogleTranslator(source="en", target="my")
+    # အရင်လို အလုပ်လုပ်စေရန် တစ်ခါတည်း အပြည့် ဘာသာပြန်ခိုင်းခြင်း
+    translated = translator.translate(text)
+    return translated if translated else text
+  except Exception:
+    return text
 
 
 # ---------------------------------------------------------
@@ -246,12 +221,9 @@ if st.button("🚀 မြန်မာ Script သက်သက် ထုတ်ယ�
   if video_url:
     try:
       st.video(video_url)
-      with st.spinner(
-          "⏳ Transcript ဆွဲထုတ်ပြီး မြန်မာလို အမှန်အတိုင်း"
-          " ဘာသာပြန်နေပါပြီ..."
-      ):
+      with st.spinner("⏳ Transcript ဆွဲထုတ်ပြီး မြန်မာလို ဘာသာပြန်နေပါပြီ..."):
         english_transcript = get_youtube_transcript_ytdlp(video_url)
-        myanmar_script = translate_text_direct(english_transcript)
+        myanmar_script = translate_to_myanmar(english_transcript)
 
       if not is_vip:
         increment_user_usage(clean_email)
@@ -283,4 +255,4 @@ if st.button("🚀 မြန်မာ Script သက်သက် ထုတ်ယ�
       )
   else:
     st.warning("⚠️ ကျေးဇူးပြု၍ YouTube လင့်ခ် ထည့်သွင်းပေးပါ။")
-        
+      
