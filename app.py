@@ -4,7 +4,7 @@ import json
 import os
 import re
 import time
-from deep_translator import GoogleTranslator
+import requests
 from gtts import gTTS
 import streamlit as st
 import yt_dlp
@@ -12,7 +12,7 @@ from youtube_transcript_api import YouTubeTranscriptApi
 
 st.set_page_config(
     page_title="YouTube AI Studio & Script Suite",
-    page_icon="▶️",
+    page_icon="🔴",
     layout="wide",
 )
 
@@ -182,40 +182,43 @@ def generate_srt(transcript_data):
   return srt_output
 
 
-def chunked_translate(text, chunk_size=800):
+# 🛠️ STABLE DIRECT API TRANSLATOR (GOOGLE TRANSLATE ENDPOINT)
+def chunked_translate(text, chunk_size=400):
   if not text.strip():
     return ""
 
-  translator = GoogleTranslator(source="auto", target="my")
-  if len(text) <= chunk_size:
-    try:
-      return translator.translate(text)
-    except Exception:
-      return text
+  words = text.split()
+  chunks = []
+  current_chunk = []
+  current_len = 0
 
-  chunks = [
-      text[i : i + chunk_size] for i in range(0, len(text), chunk_size)
-  ]
-  translated_chunks = []
+  for word in words:
+    current_len += len(word) + 1
+    current_chunk.append(word)
+    if current_len > chunk_size:
+      chunks.append(" ".join(current_chunk))
+      current_chunk = []
+      current_len = 0
+  if current_chunk:
+    chunks.append(" ".join(current_chunk))
 
+  translated_full = []
   for chunk in chunks:
-    success = False
-    for attempt in range(2):
-      try:
-        res = translator.translate(chunk)
-        if res:
-          translated_chunks.append(res)
-          success = True
-          break
-      except Exception:
-        pass
-      time.sleep(0.3)
+    try:
+      url = f"https://translate.googleapis.com/translate_a/single?client=gtx&sl=en&tl=my&dt=t&q={requests.utils.quote(chunk)}"
+      headers = {"User-Agent": "Mozilla/5.0"}
+      response = requests.get(url, headers=headers, timeout=5)
+      if response.status_code == 200:
+        res_json = response.json()
+        translated_part = "".join([item[0] for item in res_json[0]])
+        translated_full.append(translated_part)
+      else:
+        translated_full.append(chunk)
+    except Exception:
+      translated_full.append(chunk)
+    time.sleep(0.1)
 
-    if not success:
-      translated_chunks.append(chunk)
-    time.sleep(0.2)
-
-  return " ".join(translated_chunks)
+  return " ".join(translated_full)
 
 
 def fetch_transcript_robust(v_url, v_id):
@@ -251,7 +254,6 @@ def fetch_transcript_robust(v_url, v_id):
           lang = list(subtitles.keys())[0]
 
         sub_data = subtitles[lang]
-        import requests
 
         json_url = next(
             (
@@ -414,4 +416,3 @@ if st.button("⚡ Script & AI Processing စတင်မည်", type="primary")
         st.error(f"❌ အမှားအယွင်း ဖြစ်ပေါ်သွားပါသည်: {str(e)}")
   else:
     st.warning("⚠️ ကျေးဇူးပြု၍ YouTube Link ရိုက်ထည့်ပေးပါ။")
-              
