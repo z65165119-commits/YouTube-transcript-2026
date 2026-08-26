@@ -184,42 +184,21 @@ def generate_srt(transcript_data):
   return srt_output
 
 
-# 🚀 FAST CHUNK TRANSLATOR (အမြန်ဆုံး ဘာသာပြန်ပေးမည့် စနစ်)
-def translate_fast_chunks(text, chunk_size=1500):
+# 🛠️ STABLE SENTENCE TRANSLATOR (သေချာပေါက် မြန်မာလို ဘာသာပြန်ပေးမည့် စနစ်)
+def translate_text_safely(text):
   if not text.strip():
     return ""
-
-  words = text.split()
-  chunks = []
-  current_chunk = []
-  current_len = 0
-
-  for word in words:
-    current_len += len(word) + 1
-    current_chunk.append(word)
-    if current_len > chunk_size:
-      chunks.append(" ".join(current_chunk))
-      current_chunk = []
-      current_len = 0
-  if current_chunk:
-    chunks.append(" ".join(current_chunk))
-
-  translated_full = []
-  for chunk in chunks:
-    try:
-      url = f"https://translate.googleapis.com/translate_a/single?client=gtx&sl=en&tl=my&dt=t&q={requests.utils.quote(chunk)}"
-      headers = {"User-Agent": "Mozilla/5.0"}
-      response = requests.get(url, headers=headers, timeout=8)
-      if response.status_code == 200:
-        res_json = response.json()
-        translated_part = "".join([item[0] for item in res_json[0]])
-        translated_full.append(translated_part)
-      else:
-        translated_full.append(chunk)
-    except Exception:
-      translated_full.append(chunk)
-
-  return " ".join(translated_full)
+  try:
+    url = f"https://translate.googleapis.com/translate_a/single?client=gtx&sl=en&tl=my&dt=t&q={requests.utils.quote(text)}"
+    headers = {"User-Agent": "Mozilla/5.0"}
+    response = requests.get(url, headers=headers, timeout=5)
+    if response.status_code == 200:
+      res_json = response.json()
+      translated_text = "".join([item[0] for item in res_json[0]])
+      return translated_text if translated_text else text
+  except Exception:
+    pass
+  return text
 
 
 def fetch_transcript_robust(v_url, v_id):
@@ -298,52 +277,63 @@ if st.button("⚡ Script & AI Processing စတင်မည်", type="primary")
       try:
         st.video(video_url)
 
-        with st.spinner("⏳ Transcript များကို အမြန်ဆုံး ထုတ်ယူနေပါသည်..."):
+        with st.spinner("⏳ Transcript နှင့် မြန်မာဘာသာပြန်များကို ထုတ်ယူနေပါသည်..."):
           fetched_transcript = fetch_transcript_robust(video_url, video_id)
 
           english_lines = []
+          myanmar_lines = []
           raw_text_combined = ""
-          timed_items = []
+
+          # စာကြောင်းများကို အစုလိုက် ပေါင်းပြီး ဘာသာပြန်ရန် စီစဉ်ခြင်း (အဝိုင်းမလည်စေရန်)
+          batch_size = 15  # တစ်ခါတည်း အုပ်စုလိုက် ဘာသာပြန်မည့် ပမာဏ
+          batches = []
+          current_batch_texts = []
 
           for item in fetched_transcript:
             start_str = format_time(item["start"])
             text = item["text"].strip()
             raw_text_combined += text + " "
             english_lines.append(f"{start_str}  {text}")
-            timed_items.append((start_str, text))
+
+            current_batch_texts.append(text)
+            if len(current_batch_texts) >= batch_size:
+              batches.append(" ".join(current_batch_texts))
+              current_batch_texts = []
+
+          if current_batch_texts:
+            batches.append(" ".join(current_batch_texts))
+
+          # အုပ်စုလိုက် ဘာသာပြန်ခြင်း
+          translated_batches = []
+          for batch_text in batches:
+            trans = translate_text_safely(batch_text)
+            translated_batches.append(trans)
+            time.sleep(0.05)
+
+          full_myanmar_text = " ".join(translated_batches)
+          myanmar_words = full_myanmar_text.split()
+
+          # မိနစ်အလိုက် အချိန်အမှတ်အသားများနှင့် ပြန်လည်ချိတ်ဆက်ခြင်း
+          total_items = len(fetched_transcript)
+          words_per_item = max(1, len(myanmar_words) // max(1, total_items))
+
+          for i, item in enumerate(fetched_transcript):
+            start_str = format_time(item["start"])
+            sub_words = myanmar_words[
+                i * words_per_item : (i + 1) * words_per_item
+            ]
+            if sub_words:
+              line_my = " ".join(sub_words)
+            else:
+              line_my = translate_text_safely(item["text"].strip())
+            myanmar_lines.append(f"{start_str}  {line_my}")
 
           full_english_script = "\n".join(english_lines)
+          full_myanmar_script = "\n".join(myanmar_lines)
+
           words = len(raw_text_combined.split())
           chars = len(raw_text_combined)
           est_read_time = round(words / 150, 1)
-
-        with st.spinner(
-            "⏳ မြန်မာဘာသာသို့ အမြန်ဆုံး ဘာသာပြန်ဆိုနေပါသည်..."
-        ):
-          # တစ်ခုလုံးကို အရင်ဘာသာပြန်မယ်
-          full_myanmar_translation = translate_fast_chunks(raw_text_combined)
-
-          # အကယ်၍ Timestamps ပါချင်ရင် အချိန်အမှတ်အသားနဲ့ တွဲပြဖို့အတွက် စီစဉ်ခြင်း
-          if show_timestamp:
-            # စာကြောင်းရေအလိုက် ပြန်ခွဲထုတ်ခြင်း
-            myanmar_words = full_myanmar_translation.split()
-            chunk_len = max(
-                1, len(myanmar_words) // max(1, len(timed_items))
-            )
-            myanmar_lines = []
-            for i, (start_str, _) in enumerate(timed_items):
-              sub_words = myanmar_words[
-                  i * chunk_len : (i + 1) * chunk_len
-              ]
-              sub_text = (
-                  " ".join(sub_words)
-                  if sub_words
-                  else timed_items[i][1]
-              )
-              myanmar_lines.append(f"{start_str}  {sub_text}")
-            final_myanmar_script = "\n".join(myanmar_lines)
-          else:
-            final_myanmar_script = full_myanmar_translation
 
           srt_content = generate_srt(fetched_transcript)
 
@@ -354,9 +344,9 @@ if st.button("⚡ Script & AI Processing စတင်မည်", type="primary")
               else (sentences[:6] if summary_length == "Medium" else sentences[:10])
           )
           summary_en = ". ".join(summary_sentences) + "."
-          summary_my = translate_fast_chunks(summary_en)
+          summary_my = translate_text_safely(summary_en)
 
-        st.success("✅ အားလုံး အောင်မြင်စွာ ပြီးဆုံးပါပြီ!")
+        st.success("✅ အားလုံး အောင်မြင်စွာ ဘာသာပြန်ပြီးပါပြီ!")
 
         # Free User ဖြစ်မှသာ Database ထဲတွင် အကြိမ်ရေ တိုးပေးမည်
         if not is_vip:
@@ -378,10 +368,10 @@ if st.button("⚡ Script & AI Processing စတင်မည်", type="primary")
 
         with tab1:
           st.subheader("မြန်မာ ဘာသာပြန် Script (မိနစ်အလိုက်)")
-          st.code(final_myanmar_script, height=400)
+          st.code(full_myanmar_script, height=400)
           st.download_button(
               "📥 Download မြန်မာ Script (.txt)",
-              data=final_myanmar_script.encode("utf-8-sig"),
+              data=full_myanmar_script.encode("utf-8-sig"),
               file_name="myanmar_script_with_timestamps.txt",
               mime="text/plain; charset=utf-8",
           )
@@ -433,3 +423,4 @@ if st.button("⚡ Script & AI Processing စတင်မည်", type="primary")
         st.error(f"❌ အမှားအယွင်း ဖြစ်ပေါ်သွားပါသည်: {str(e)}")
   else:
     st.warning("⚠️ ကျေးဇူးပြု၍ YouTube Link ရိုက်ထည့်ပေးပါ။")
+        
