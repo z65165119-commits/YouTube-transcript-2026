@@ -160,18 +160,17 @@ def extract_video_id(url):
 
 def fetch_transcript_with_timestamps(v_id):
   try:
-    tx_list = YouTubeTranscriptApi.list_transcripts(v_id)
-    for t in tx_list:
-      fetched = t.fetch()
-      if fetched:
-        formatted_text = ""
-        for item in fetched:
-          start_time = int(item["start"])
-          minutes = start_time // 60
-          seconds = start_time % 60
-          time_str = f"[{minutes:02d}:{seconds:02d}]"
-          formatted_text += f"{time_str} {item['text'].strip()}\n"
-        return formatted_text
+    # Direct fetch using get_transcript to prevent attribute errors
+    fetched = YouTubeTranscriptApi.get_transcript(v_id)
+    if fetched:
+      formatted_text = ""
+      for item in fetched:
+        start_time = int(item["start"])
+        minutes = start_time // 60
+        seconds = start_time % 60
+        time_str = f"[{minutes:02d}:{seconds:02d}]"
+        formatted_text += f"{time_str} {item['text'].strip()}\n"
+      return formatted_text
   except Exception as e:
     st.error(f"Transcript ထုတ်ယူရာတွင် အမှားရှိပါသည်: {str(e)}")
   return None
@@ -246,4 +245,3 @@ if st.button("⚡ မြန်မာစာ Script ထုတ်မည်", type="
         st.error(f"❌ အမှားအယွင်း ဖြစ်ပေါ်သွားပါသည်: {str(e)}")
   else:
     st.warning("⚠️ ကျေးဇူးပြု၍ YouTube Video Link ကို ရိုက်ထည့်ပေးပါ။")
-              
