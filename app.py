@@ -158,28 +158,17 @@ def extract_video_id(url):
   return match.group(1) if match else None
 
 
-def fetch_transcript_with_timestamps(v_id):
+def fetch_transcript_items(v_id):
   try:
-    # Use instance-based or direct static method call depending on package version
     try:
       fetched = YouTubeTranscriptApi.get_transcript(v_id)
     except Exception:
-      # Fallback for newer library syntax variants
       api_instance = YouTubeTranscriptApi()
       fetched = api_instance.get_transcript(v_id)
-
-    if fetched:
-      formatted_text = ""
-      for item in fetched:
-        start_time = int(item["start"])
-        minutes = start_time // 60
-        seconds = start_time % 60
-        time_str = f"[{minutes:02d}:{seconds:02d}]"
-        formatted_text += f"{time_str} {item['text'].strip()}\n"
-      return formatted_text
+    return fetched
   except Exception as e:
     st.error(f"Transcript ထုတ်ယူရာတွင် အမှားရှိပါသည်: {str(e)}")
-  return None
+    return None
 
 
 if st.button("⚡ မြန်မာစာ Script ထုတ်မည်", type="primary"):
@@ -199,48 +188,60 @@ if st.button("⚡ မြန်မာစာ Script ထုတ်မည်", type="
         full_myanmar_script = ""
 
         with st.spinner(
-            "⏳ YouTube Transcript စာသားများကို အလိုအလျောက် ဆွဲထုတ်ပြီး Gemini"
-            " AI ဖြင့် မြန်မာလို ဘာသာပြန်ပေးနေပါပြီ..."
+            "⏳ YouTube Transcript များကို အပိုင်းလိုက်ခွဲ၍ Gemini AI ဖြင့်"
+            " မြန်မာလို ဘာသာပြန်ပေးနေပါပြီ..."
         ):
-          transcript_text = fetch_transcript_with_timestamps(video_id)
+          transcript_items = fetch_transcript_items(video_id)
 
-          if transcript_text:
+          if transcript_items:
             genai.configure(api_key=active_key)
             model = genai.GenerativeModel("gemini-3.5-flash")
 
-            prompt = (
-                "You are an expert translator. Below is the full English"
-                " timestamped transcript of a YouTube video. Translate the"
-                " spoken text line-by-line into natural, fluent, spoken-style"
-                " Myanmar (Burmese) language so the user can easily read and"
-                " record their own voiceover. Keep the timestamps like [00:15]"
-                " so the user knows when each part is spoken. Do NOT rewrite"
-                " it as a movie recap review; just translate the spoken lines"
-                " directly and naturally.\n\nTranscript:\n"
-                f"{transcript_text[:15000]}"
-            )
+            # Split into chunks of 60 lines to prevent server limits
+            chunk_size = 60
+            for i in range(0, len(transcript_items), chunk_size):
+              chunk = transcript_items[i : i + chunk_size]
+              chunk_text = ""
+              for item in chunk:
+                start_time = int(item["start"])
+                minutes = start_time // 60
+                seconds = start_time % 60
+                time_str = f"[{minutes:02d}:{seconds:02d}]"
+                chunk_text += f"{time_str} {item['text'].strip()}\n"
 
-            response = model.generate_content(prompt)
-            full_myanmar_script = (
-                response.text.strip()
-                if response and response.text
-                else "မြန်မာပြန် စာသား ထုတ်ယူ၍မရပါ။"
-            )
+              prompt = (
+                  "You are an expert translator. Below is a segment of a"
+                  " YouTube video transcript with timestamps. Translate the"
+                  " spoken text line-by-line into natural, fluent, spoken-style"
+                  " Myanmar (Burmese) language so the user can easily read and"
+                  " record their own voiceover. Keep the timestamps like [00:15]"
+                  " so the user knows when each part is spoken. Do NOT rewrite"
+                  " it as a movie recap review; just translate the spoken lines"
+                  " directly and naturally.\n\nSegment:\n"
+                  f"{chunk_text}"
+              )
 
-            st.success("👑 မြန်မာစာ Script အောင်မြင်စွာ ထွက်ရှိလာပါပြီ!")
+              response = model.generate_content(prompt)
+              if response and response.text:
+                full_myanmar_script += response.text.strip() + "\n"
 
-            if not is_vip:
-              increment_user_usage(clean_email)
+            if full_myanmar_script:
+              st.success("👑 မြန်မာစာ Script အောင်မြင်စွာ ထွက်ရှိလာပါပြီ!")
 
-            st.markdown("---")
-            st.subheader("📝 မြန်မာစာ Script (Voiceover ဖတ်ရန်)")
-            st.code(full_myanmar_script, height=500)
-            st.download_button(
-                "📥 Download မြန်မာ Script (.txt)",
-                data=full_myanmar_script.encode("utf-8-sig"),
-                file_name="youtube_myanmar_script.txt",
-                mime="text/plain; charset=utf-8",
-            )
+              if not is_vip:
+                increment_user_usage(clean_email)
+
+              st.markdown("---")
+              st.subheader("📝 မြန်မာစာ Script (Voiceover ဖတ်ရန်)")
+              st.code(full_myanmar_script, height=500)
+              st.download_button(
+                  "📥 Download မြန်မာ Script (.txt)",
+                  data=full_myanmar_script.encode("utf-8-sig"),
+                  file_name="youtube_myanmar_script.txt",
+                  mime="text/plain; charset=utf-8",
+              )
+            else:
+              st.error("❌ ဘာသာပြန်ဆိုမှု အထွက် မရှိပါ။")
           else:
             st.error(
                 "❌ ဤဗီဒီယိုတွင် Transcript (စာသားများ) ရယူ၍မရပါ သို့မဟုတ်"
@@ -251,4 +252,4 @@ if st.button("⚡ မြန်မာစာ Script ထုတ်မည်", type="
         st.error(f"❌ အမှားအယွင်း ဖြစ်ပေါ်သွားပါသည်: {str(e)}")
   else:
     st.warning("⚠️ ကျေးဇူးပြု၍ YouTube Video Link ကို ရိုက်ထည့်ပေးပါ။")
-      
+              
