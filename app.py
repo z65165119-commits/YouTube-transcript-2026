@@ -175,20 +175,12 @@ if st.button("⚡ မြန်မာစာ Script ထုတ်မည်", type="
         full_myanmar_script = ""
 
         with st.spinner("⏳ YouTube Transcript ဆွဲထုတ်နေပါပြီ..."):
-          # Direct function call using fetch for transcript list
-          transcript_list = YouTubeTranscriptApi.list_transcripts(video_id)
-          transcript = None
+          # Direct and correct method to fetch transcript
+          transcript_items = YouTubeTranscriptApi.get_transcript(
+              video_id, languages=["en", "my"]
+          )
 
-          # Try finding English or auto-generated English transcript
-          try:
-            transcript = transcript_list.find_transcript(["en", "en-US"])
-          except Exception:
-            for tr in transcript_list:
-              transcript = tr
-              break
-
-          if transcript:
-            transcript_items = transcript.fetch()
+          if transcript_items:
             genai.configure(api_key=active_key)
             model = genai.GenerativeModel("gemini-1.5-flash")
 
@@ -241,4 +233,4 @@ if st.button("⚡ မြန်မာစာ Script ထုတ်မည်", type="
         st.error(f"❌ အမှားအယွင်း ဖြစ်ပေါ်သွားပါသည်: {str(e)}")
   else:
     st.warning("⚠️ ကျေးဇူးပြု၍ YouTube Video Link ကို ရိုက်ထည့်ပေးပါ။")
-      
+    
