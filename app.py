@@ -132,8 +132,8 @@ st.sidebar.header("🔑 Google Gemini API Key")
 
 secret_api_key = ""
 try:
-  if "GEMIN_API_KEY" in st.secrets:
-    secret_api_key = st.secrets["GEMIN_API_KEY"]
+  if "GEMINI_API_KEY" in st.secrets:
+    secret_api_key = st.secrets["GEMINI_API_KEY"]
 except Exception:
   pass
 
@@ -142,17 +142,6 @@ user_api_key = st.sidebar.text_input(
     value=secret_api_key,
     type="password",
     help="Streamlit Secrets မှ သို့မဟုတ် ဤနေရာတွင် တိုက်ရိုက်ထည့်ပါ။",
-)
-
-st.sidebar.markdown("---")
-st.sidebar.header("🎙️ Voice & Audio Settings")
-voice_gender = st.sidebar.radio(
-    "Voiceover Character (အသံအမျိုးအစား)",
-    ["👦 Boy (Male Tone)", "👧 Girl (Female Tone)"],
-    index=0,
-)
-volume_level = st.sidebar.slider(
-    "🔊 Audio Volume Booster", min_value=0.5, max_value=2.0, value=1.0, step=0.1
 )
 
 if not is_vip and current_usage >= FREE_LIMIT:
@@ -183,9 +172,13 @@ def fetch_transcript_text(v_id):
   return None
 
 
-if st.button("⚡ Script & Voiceover ထုတ်မည်", type="primary"):
-  if not user_api_key:
-    st.warning("⚠️ ကျေးဇူးပြု၍ Google Gemini API Key ထည့်ပေးပါ။")
+if st.button("⚡ မြန်မာ Movie Script & Voiceover ထုတ်မည်", type="primary"):
+  active_key = user_api_key.strip() if user_api_key else secret_api_key
+  if not active_key:
+    st.warning(
+        "⚠️ ကျေးဇူးပြု၍ Sidebar တွင် Google Gemini API Key ထည့်ပေးပါ (သို့မဟုတ်"
+        " Secrets တွင် သတ်မှတ်ပေးပါ)။"
+    )
   elif video_url:
     video_id = extract_video_id(video_url)
     if not video_id:
@@ -194,27 +187,24 @@ if st.button("⚡ Script & Voiceover ထုတ်မည်", type="primary"):
       try:
         st.video(video_url)
         full_myanmar_script = ""
-        raw_text_combined = ""
 
         with st.spinner(
-            "⏳ ဗီဒီယိုအချက်အလက်များကို ဆွဲထုတ်ပြီး Gemini AI ဖြင့် မြန်မာ Movie"
+            "⏳ YouTube Transcript ဆွဲထုတ်နေပြီး Gemini AI ဖြင့် မြန်မာ Movie"
             " Recap စတင်ရေးသားနေပါပြီ..."
         ):
           transcript_text = fetch_transcript_text(video_id)
 
-          genai.configure(api_key=user_api_key.strip())
-          # Updated to gemini-2.5-flash or gemini-2.0-flash standard model name
+          genai.configure(api_key=active_key)
           model = genai.GenerativeModel("gemini-2.0-flash")
 
           if transcript_text:
-            raw_text_combined = transcript_text
             prompt = (
                 "You are an expert professional YouTube Movie Recap"
                 " scriptwriter. Read the following English YouTube transcript"
                 " and rewrite it into an extremely engaging, thrilling, natural,"
                 " and fluent Myanmar (Burmese) voiceover script suitable for"
                 " TikTok and YouTube Shorts:\n\n"
-                f"{raw_text_combined[:15000]}"
+                f"{transcript_text[:15000]}"
             )
           else:
             prompt = (
@@ -231,22 +221,11 @@ if st.button("⚡ Script & Voiceover ထုတ်မည်", type="primary"):
               if response and response.text
               else "ဇာတ်လမ်းအကျဉ်း ဖန်တီး၍မရပါ။"
           )
-          raw_text_combined = full_myanmar_script
 
-          words = len(raw_text_combined.split())
+          words = len(full_myanmar_script.split())
           est_read_time = round(words / 150, 1)
 
-          sum_model = genai.GenerativeModel("gemini-2.0-flash")
-          sum_prompt = (
-              "Provide a short captivating summary and logline of this movie in"
-              f" both English and Myanmar:\n\n{raw_text_combined[:4000]}"
-          )
-          sum_res = sum_model.generate_content(sum_prompt)
-          summary_text = (
-              sum_res.text if sum_res and sum_res.text else "Summary not available."
-          )
-
-        st.success("👑 Movie Recap Script နှင့် Voiceover အောင်မြင်စွာ ထွက်ရှိလာပါပြီ!")
+        st.success("👑 မြန်မာ Movie Recap Script အောင်မြင်စွာ ထွက်ရှိလာပါပြီ!")
 
         if not is_vip:
           increment_user_usage(clean_email)
@@ -257,10 +236,9 @@ if st.button("⚡ Script & Voiceover ထုတ်မည်", type="primary"):
 
         st.markdown("---")
 
-        tab1, tab2, tab3 = st.tabs([
+        tab1, tab2 = st.tabs([
             "🇲🇲 မြန်မာ Movie Recap Script",
-            "🤖 AI Story Summary",
-            f"🔊 Audio Voiceover ({voice_gender})",
+            "🔊 အသံထွက် (Myanmar Voiceover MP3)",
         ])
 
         with tab1:
@@ -274,14 +252,10 @@ if st.button("⚡ Script & Voiceover ထုတ်မည်", type="primary"):
           )
 
         with tab2:
-          st.subheader("🤖 AI Story Summary & Logline")
-          st.write(summary_text)
-
-        with tab3:
-          st.subheader(f"🔊 Myanmar Text-to-Speech - {voice_gender}")
+          st.subheader("🔊 Myanmar Text-to-Speech")
           st.info(
-              f"ℹ️ ရွေးချယ်ထားသော အသံပုံစံ: {voice_gender} | အသံအထွက် အတိုးအချဲ့"
-              f" အဆင့်: {volume_level}x"
+              "ℹ️ ထွက်ရှိလာသော မြန်မာ Script စာသားများကို အသံဖိုင် (MP3)"
+              " အဖြစ် နားဆင်နိုင်ပြီး Download ရယူနိုင်ပါသည်။"
           )
 
           try:
@@ -293,9 +267,9 @@ if st.button("⚡ Script & Voiceover ထုတ်မည်", type="primary"):
 
             st.audio(audio_fp, format="audio/mp3")
             st.download_button(
-                f"📥 Download {voice_gender} Voiceover MP3",
+                "📥 Download မြန်မာ Voiceover MP3",
                 data=audio_fp,
-                file_name=f"myanmar_voiceover_{voice_gender.split()[0].lower()}.mp3",
+                file_name="myanmar_movie_recap_voiceover.mp3",
                 mime="audio/mp3",
             )
           except Exception as e:
