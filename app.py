@@ -200,7 +200,8 @@ if st.button("⚡ Ready-to-Post Script & Audio ထုတ်မည်", type="pri
           transcript_text = fetch_transcript_text(video_id)
 
           genai.configure(api_key=user_api_key.strip())
-          model = genai.GenerativeModel("gemini-2.5-flash")
+          # Updated to gemini-3.6-flash model as requested by API
+          model = genai.GenerativeModel("gemini-3.6-flash")
 
           if transcript_text:
             raw_text_combined = transcript_text
@@ -234,7 +235,7 @@ if st.button("⚡ Ready-to-Post Script & Audio ထုတ်မည်", type="pri
           words = len(raw_text_combined.split())
           est_read_time = round(words / 150, 1)
 
-          sum_model = genai.GenerativeModel("gemini-2.5-flash")
+          sum_model = genai.GenerativeModel("gemini-3.6-flash")
           sum_prompt = (
               "Provide a short captivating summary and logline of this movie in"
               f" both English and Myanmar ({summary_length} version):"
@@ -298,4 +299,4 @@ if st.button("⚡ Ready-to-Post Script & Audio ထုတ်မည်", type="pri
         st.error(f"❌ အမှားအယွင်း ဖြစ်ပေါ်သွားပါသည်: {str(e)}")
   else:
     st.warning("⚠️ ကျေးဇူးပြု၍ YouTube Movie Recap Link ကို ရိုက်ထည့်ပေးပါ။")
-              
+        
