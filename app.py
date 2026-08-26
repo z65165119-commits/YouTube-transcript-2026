@@ -159,24 +159,19 @@ def extract_video_id(url):
 
 
 def fetch_transcript_items(v_id):
-  # Safely handle different versions of youtube-transcript-api to avoid object attribute errors
+  # Completely robust approach for youtube-transcript-api to avoid object attribute errors
   try:
+    # Method 1: direct fetch using list_transcripts (works across all modern versions)
+    transcript_list = YouTubeTranscriptApi.list_transcripts(v_id)
+    for transcript in transcript_list:
+      return transcript.fetch()
+  except Exception:
     try:
-      # Try standard static method
+      # Method 2: legacy static function
       return YouTubeTranscriptApi.get_transcript(v_id)
-    except Exception:
-      try:
-        # Try fetching via list_transcripts API
-        transcript_list = YouTubeTranscriptApi.list_transcripts(v_id)
-        for tr in transcript_list:
-          return tr.fetch()
-      except Exception:
-        # Try instance-based fetch
-        api_obj = YouTubeTranscriptApi()
-        return api_obj.get_transcript(v_id)
-  except Exception as e:
-    st.error(f"Transcript ထုတ်ယူရာတွင် အမှားရှိပါသည်: {str(e)}")
-    return None
+    except Exception as e:
+      st.error(f"Transcript ထုတ်ယူရာတွင် အမှားရှိပါသည်: {str(e)}")
+      return None
 
 
 if st.button("⚡ မြန်မာစာ Script ထုတ်မည်", type="primary"):
@@ -260,4 +255,4 @@ if st.button("⚡ မြန်မာစာ Script ထုတ်မည်", type="
         st.error(f"❌ အမှားအယွင်း ဖြစ်ပေါ်သွားပါသည်: {str(e)}")
   else:
     st.warning("⚠️ ကျေးဇူးပြု၍ YouTube Video Link ကို ရိုက်ထည့်ပေးပါ။")
-                  
+              
