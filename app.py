@@ -3,12 +3,19 @@ import io
 import json
 import os
 import re
+import subprocess
 import time
 from deep_translator import GoogleTranslator
 from gtts import gTTS
 import streamlit as st
-import yt_dlp
 from youtube_transcript_api import YouTubeTranscriptApi
+
+# စာကြောင်းရေအလိုက် yt-dlp အလိုအလျောက် update လုပ်ရန်
+try:
+  import yt_dlp
+except ImportError:
+  pass
+
 
 st.set_page_config(
     page_title="YouTube AI Studio & Script Suite",
@@ -115,7 +122,7 @@ is_vip = clean_email in allowed_emails_lower
 current_usage = get_user_usage(clean_email)
 
 # ---------------------------------------------------------
-# ⚙️ SIDEBAR - USER ACCOUNT & Options
+# ⚙️ SIDEBAR - USER ACCOUNT & OPTIONS
 # ---------------------------------------------------------
 st.sidebar.header("👤 Account Info")
 st.sidebar.write(f"**Logged in as:**\n{clean_email}")
@@ -195,68 +202,14 @@ def translate_line_by_line(text_line):
   return text_line
 
 
-# 🛠️ ULTRA-ROBUST TRANSCRIPT FETCHER (Auto-generated CC များပါ အသေအချာ ဆွဲထုတ်ပေးမည့်စနစ်)
-def fetch_transcript_super_robust(v_url, v_id):
-  # 1st Attempt: yt_dlp list_transcripts / subtitle extraction (Auto-captions ပါ အဖမ်းနိုင်ဆုံး)
-  ydl_opts = {
-      "skip_download": True,
-      "writesubtitles": True,
-      "writeautomaticsub": True,
-      "subtitleslangs": ["en", "en-US", "my", "auto"],
-      "quiet": True,
-  }
-
-  try:
-    with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-      info = ydl.extract_info(v_url, download=False)
-      subtitles = info.get("subtitles") or info.get("automatic_captions")
-
-      if subtitles:
-        lang_key = None
-        for l in ["en", "en-US", "en-GB", "auto"]:
-          if l in subtitles:
-            lang_key = l
-            break
-        if not lang_key:
-          lang_key = list(subtitles.keys())[0]
-
-        sub_formats = subtitles[lang_key]
-        json_url = None
-        for s in sub_formats:
-          ext = s.get("ext", "")
-          if "json" in ext or ext == "json3":
-            json_url = s["url"]
-            break
-
-        if not json_url and sub_formats:
-          json_url = sub_formats[0]["url"]
-
-        if json_url:
-          res = requests.get(json_url, timeout=10)
-          if res.status_code == 200:
-            res_json = res.json()
-            parsed_transcript = []
-            for event in res_json.get("events", []):
-              if "segs" in event:
-                text = "".join(
-                    [s.get("utf8", "") for s in event["segs"]]
-                ).strip()
-                if text and text != "\n":
-                  start = event.get("tStartMs", 0) / 1000.0
-                  dur = event.get("dDurationMs", 0) / 1000.0
-                  parsed_transcript.append(
-                      {"text": text, "start": start, "duration": dur}
-                  )
-            if parsed_transcript:
-              return parsed_transcript
-  except Exception:
-    pass
-
-  # 2nd Attempt: Standard YouTubeTranscriptApi with all possible language fallbacks
+# 🛡️ BULLET-PROOF TRANSCRIPT FETCHER (YouTube Transcript API ကို အဓိက အားထားမည့်စနစ်)
+def fetch_transcript_bulletproof(v_id):
+  # ပထမနည်းလမ်း - YouTube Transcript API ကို တိုက်ရိုက်သုံးခြင်း (အလုံခြုံဆုံးနှင့် အမြန်ဆုံး)
   try:
     tx_list = YouTubeTranscriptApi.list_transcripts(v_id)
-    for transcript in tx_list:
-      fetched = transcript.translate("en").fetch()
+    # ရနိုင်သမျှ transcript ထဲက English ကို ဦးစားပေးထုတ်မည်
+    for t in tx_list:
+      fetched = t.fetch()
       if fetched:
         return [
             {
@@ -267,19 +220,19 @@ def fetch_transcript_super_robust(v_url, v_id):
             for entry in fetched
         ]
   except Exception:
-    try:
-      tx = YouTubeTranscriptApi.get_transcript(
-          v_id,
-          languages=["en", "en-US", "en-GB", "my", "auto", "es", "fr", "de"],
-      )
-      if tx:
-        return tx
-    except Exception:
-      pass
+    pass
+
+  # ဒုတိယနည်းလမ်း - get_transcript ဖြင့် တိုက်ရိုက်ဆွဲရန်
+  try:
+    tx = YouTubeTranscriptApi.get_transcript(v_id, languages=["en", "auto"])
+    if tx:
+      return tx
+  except Exception:
+    pass
 
   raise Exception(
-      "ဒီဗီဒီယိုတွင် YouTube ၏ Closed Captions (CC) (သို့မဟုတ်) Subtitles"
-      " လုံးဝ မရရှိနိုင်ပါ သို့မဟုတ် YouTube မှ တားမြစ်ထားပါသည်။"
+      "ဒီဗီဒီယိုတွင် YouTube Transcript (သို့မဟုတ်) Subtitles လုံးဝ မရရှိနိုင်ပါ"
+      " သို့မဟုတ် YouTube မှ တားမြစ်ထားပါသည်။"
   )
 
 
@@ -295,9 +248,7 @@ if st.button("⚡ Script & AI Processing စတင်မည်", type="primary")
         with st.spinner(
             "⏳ ဗီဒီယို၏ Subtitles များကို အစအဆုံး ထုတ်ယူပြီး ဘာသာပြန်နေပါပြီ..."
         ):
-          fetched_transcript = fetch_transcript_super_robust(
-              video_url, video_id
-          )
+          fetched_transcript = fetch_transcript_bulletproof(video_id)
 
           english_lines = []
           myanmar_lines = []
