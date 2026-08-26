@@ -4,15 +4,15 @@ import json
 import os
 import re
 import time
+from deep_translator import GoogleTranslator
 from gtts import gTTS
-import requests
 import streamlit as st
 import yt_dlp
 from youtube_transcript_api import YouTubeTranscriptApi
 
 st.set_page_config(
     page_title="YouTube AI Studio & Script Suite",
-    page_icon="🔴",
+    page_icon="▶️",
     layout="wide",
 )
 
@@ -182,37 +182,38 @@ def generate_srt(transcript_data):
   return srt_output
 
 
-def translate_mymemory(text):
-  """MyMemory Translation API ကို အသုံးပြု၍ မြန်မာလို အမှန်တကယ် ဘာသာပြန်ခြင်း"""
+def chunked_translate(text, chunk_size=800):
   if not text.strip():
     return ""
 
-  # API က စာသားအရှည် အများကြီးဆိုရင် ကန့်သတ်ချက်ရှိ므로 ၄၅၀ စာလုံးစီ အပိုင်းခွဲမည်
-  max_len = 450
-  sentences = [
-      text[i : i + max_len] for i in range(0, len(text), max_len)
+  translator = GoogleTranslator(source="auto", target="my")
+  if len(text) <= chunk_size:
+    try:
+      return translator.translate(text)
+    except Exception:
+      return text
+
+  chunks = [
+      text[i : i + chunk_size] for i in range(0, len(text), chunk_size)
   ]
   translated_chunks = []
 
-  for part in sentences:
-    try:
-      url = "https://api.mymemory.translated.net/get"
-      params = {"q": part, "langpair": "en|my"}
-      response = requests.get(url, params=params, timeout=10)
-      if response.status_code == 200:
-        data = response.json()
-        translated_text = data.get("responseData", {}).get(
-            "translatedText", ""
-        )
-        if translated_text and "MYMEMORY WARNING" not in translated_text:
-          translated_chunks.append(translated_text)
-        else:
-          translated_chunks.append(part)
-      else:
-        translated_chunks.append(part)
-    except Exception:
-      translated_chunks.append(part)
-    time.sleep(0.3)  # API ကို တောင်းဆိုချိန် ညှိရန်
+  for chunk in chunks:
+    success = False
+    for attempt in range(2):
+      try:
+        res = translator.translate(chunk)
+        if res:
+          translated_chunks.append(res)
+          success = True
+          break
+      except Exception:
+        pass
+      time.sleep(0.3)
+
+    if not success:
+      translated_chunks.append(chunk)
+    time.sleep(0.2)
 
   return " ".join(translated_chunks)
 
@@ -250,6 +251,8 @@ def fetch_transcript_robust(v_url, v_id):
           lang = list(subtitles.keys())[0]
 
         sub_data = subtitles[lang]
+        import requests
+
         json_url = next(
             (
                 s["url"]
@@ -292,53 +295,41 @@ if st.button("⚡ Script & AI Processing စတင်မည်", type="primary")
       try:
         st.video(video_url)
 
-        with st.spinner("⏳ Transcript နှင့် Data များကို ထုတ်ယူနေပါသည်..."):
+        with st.spinner("⏳ Transcript နှင့် AI Data များကို ထုတ်ယူနေပါသည်..."):
           fetched_transcript = fetch_transcript_robust(video_url, video_id)
 
           english_lines = []
-          pure_texts = []
+          raw_text_combined = ""
           for item in fetched_transcript:
             start_str = format_time(item["start"])
             text = item["text"].strip()
-            clean_t = re.sub(r"^\d+\.?\s*", "", text)
-            if clean_t:
-              pure_texts.append(clean_t)
-
+            raw_text_combined += text + " "
             if show_timestamp:
               english_lines.append(f"[{start_str}] {text}")
             else:
               english_lines.append(text)
 
           full_english_script = "\n".join(english_lines)
-          pure_raw_text = " ".join(pure_texts)
 
-          words = len(pure_raw_text.split())
-          chars = len(pure_raw_text)
+          words = len(raw_text_combined.split())
+          chars = len(raw_text_combined)
           est_read_time = round(words / 150, 1)
 
-        with st.spinner(
-            "⏳ မြန်မာဘာသာသို့ အပိုင်းလိုက် ဘာသာပြန်ဆိုနေပါသည် (ခဏစောင့်ပါ)..."
-        ):
-          myanmar_translation = translate_mymemory(
-              pure_raw_text[: 4000 * 3]
-          )  # အလွန်ရှည်လျှင် ပထမပိုင်းကို ဦးစားပေးမည်
+        with st.spinner("⏳ မြန်မာဘာသာသို့ ဘာသာပြန်ဆိုနေပါသည်..."):
+          myanmar_translation = chunked_translate(raw_text_combined)
+
           srt_content = generate_srt(fetched_transcript)
 
-          sentences = [s.strip() for s in pure_raw_text.split(". ") if s.strip()]
-          summary_count = (
-              3
+          sentences = raw_text_combined.split(". ")
+          summary_sentences = (
+              sentences[:3]
               if summary_length == "Short"
-              else (6 if summary_length == "Medium" else 10)
+              else (sentences[:6] if summary_length == "Medium" else sentences[:10])
           )
-          summary_sentences = sentences[:summary_count]
-          summary_en = (
-              ". ".join(summary_sentences) + "."
-              if summary_sentences
-              else pure_raw_text[:300]
-          )
-          summary_my = translate_mymemory(summary_en)
+          summary_en = ". ".join(summary_sentences) + "."
+          summary_my = chunked_translate(summary_en)
 
-        st.success("✅ အားလုံး အောင်မြင်စွာ မြန်မာဘာသာသို့ ပြန်ဆိုပြီးပါပြီ!")
+        st.success("✅ အားလုံး အောင်မြင်စွာ ထုတ်ယူဘာသာပြန်ပြီးပါပြီ!")
 
         # Free User ဖြစ်မှသာ Database ထဲတွင် အကြိမ်ရေ တိုးပေးမည်
         if not is_vip:
@@ -423,4 +414,4 @@ if st.button("⚡ Script & AI Processing စတင်မည်", type="primary")
         st.error(f"❌ အမှားအယွင်း ဖြစ်ပေါ်သွားပါသည်: {str(e)}")
   else:
     st.warning("⚠️ ကျေးဇူးပြု၍ YouTube Link ရိုက်ထည့်ပေးပါ။")
-          
+              
