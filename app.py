@@ -159,13 +159,21 @@ def extract_video_id(url):
 
 
 def fetch_transcript_items(v_id):
+  # Safely handle different versions of youtube-transcript-api to avoid object attribute errors
   try:
     try:
-      fetched = YouTubeTranscriptApi.get_transcript(v_id)
+      # Try standard static method
+      return YouTubeTranscriptApi.get_transcript(v_id)
     except Exception:
-      api_instance = YouTubeTranscriptApi()
-      fetched = api_instance.get_transcript(v_id)
-    return fetched
+      try:
+        # Try fetching via list_transcripts API
+        transcript_list = YouTubeTranscriptApi.list_transcripts(v_id)
+        for tr in transcript_list:
+          return tr.fetch()
+      except Exception:
+        # Try instance-based fetch
+        api_obj = YouTubeTranscriptApi()
+        return api_obj.get_transcript(v_id)
   except Exception as e:
     st.error(f"Transcript ထုတ်ယူရာတွင် အမှားရှိပါသည်: {str(e)}")
     return None
@@ -197,7 +205,7 @@ if st.button("⚡ မြန်မာစာ Script ထုတ်မည်", type="
             genai.configure(api_key=active_key)
             model = genai.GenerativeModel("gemini-3.5-flash")
 
-            # Split into chunks of 60 lines to prevent server limits
+            # Split into chunks of 60 lines to prevent server limits (Error 500)
             chunk_size = 60
             for i in range(0, len(transcript_items), chunk_size):
               chunk = transcript_items[i : i + chunk_size]
@@ -252,4 +260,4 @@ if st.button("⚡ မြန်မာစာ Script ထုတ်မည်", type="
         st.error(f"❌ အမှားအယွင်း ဖြစ်ပေါ်သွားပါသည်: {str(e)}")
   else:
     st.warning("⚠️ ကျေးဇူးပြု၍ YouTube Video Link ကို ရိုက်ထည့်ပေးပါ။")
-              
+                  
