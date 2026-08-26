@@ -129,9 +129,9 @@ else:
   )
 
 st.sidebar.markdown("---")
-st.sidebar.header("🔑 Google Gemini API Key Setup")
+st.sidebar.header("🔑 Google Gemini API Key")
 
-# Load API Key securely from st.secrets
+# Try reading safely from secrets, with fallback to empty string
 secret_api_key = ""
 try:
   if "GEMINI_API_KEY" in st.secrets:
@@ -140,12 +140,12 @@ except Exception:
   pass
 
 user_api_key = st.sidebar.text_input(
-    "API Key (St. Secrets မှ အလိုအလျောက်ဖတ်မည်)",
+    "API Key (Secrets မှ သို့မဟုတ် ဤနေရာတွင် ထည့်ပါ)",
     value=secret_api_key,
     type="password",
     help=(
-        "Streamlit Secrets ထဲတွင် GEMINI_API_KEY ထည့်ထားပါက ဤနေရာတွင်"
-        " အလိုအလျောက် ပေါ်လာပါမည်။"
+        "Streamlit Secrets တွင် ထည့်ထားခြင်း မရှိပါက ဤနေရာတွင် တိုက်ရိုက်"
+        " ထည့်နိုင်ပါသည်။"
     ),
 )
 
@@ -191,7 +191,8 @@ def fetch_transcript_bulletproof(v_id):
 if st.button("⚡ Movie Recap Script ထုတ်မည်", type="primary"):
   if not user_api_key:
     st.warning(
-        "⚠️ ကျေးဇူးပြု၍ Streamlit Secrets တွင် GEMINI_API_KEY ထည့်သွင်းပေးပါ။"
+        "⚠️ ကျေးဇူးပြု၍ Streamlit Secrets သို့မဟုတ် Sidebar တွင် Google Gemini"
+        " API Key ထည့်ပေးပါ။"
     )
   elif video_url:
     video_id = extract_video_id(video_url)
