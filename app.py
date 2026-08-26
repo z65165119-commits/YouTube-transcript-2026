@@ -130,11 +130,20 @@ else:
 
 st.sidebar.markdown("---")
 st.sidebar.header("🔑 Google Gemini API Key")
+
+# Load API Key securely from st.secrets if available, else allow sidebar input
+default_api_key = ""
+try:
+  if "GEMINI_API_KEY" in st.secrets:
+    default_api_key = st.secrets["GEMINI_API_KEY"]
+except Exception:
+  pass
+
 user_api_key = st.sidebar.text_input(
     "API Key ထည့်ရန်",
-    value="AIzaSyChFnyloI7Jf38fAed4tfDzf954ojjep5I",
+    value=default_api_key,
     type="password",
-    help="သင့်ရဲ့ Gemini API Key ကို ဤနေရာတွင် ထည့်ပါ။",
+    help="Streamlit Secrets မှ (သို့မဟုတ် ကိုယ်တိုင်) API Key ထည့်ပါ။",
 )
 
 st.sidebar.markdown("---")
@@ -195,11 +204,9 @@ if st.button("⚡ Movie Recap Script ထုတ်မည်", type="primary"):
             "⏳ Movie Recap ဗီဒီယို၏ အချက်အလက်များကို Gemini AI ဖြင့်"
             " ဆွဲထုတ်နေပါပြီ..."
         ):
-          # First try transcript
           transcript_text = fetch_transcript_bulletproof(video_id)
 
           genai.configure(api_key=user_api_key.strip())
-          # Updated model name to gemini-3.6-flash
           model = genai.GenerativeModel("gemini-3.6-flash")
 
           if transcript_text:
@@ -234,7 +241,6 @@ if st.button("⚡ Movie Recap Script ထုတ်မည်", type="primary"):
           words = len(raw_text_combined.split())
           est_read_time = round(words / 150, 1)
 
-          # AI Summary using gemini-3.6-flash
           sum_model = genai.GenerativeModel("gemini-3.6-flash")
           sum_prompt = (
               "Provide a short summary/logline of this movie recap in both"
@@ -293,3 +299,4 @@ if st.button("⚡ Movie Recap Script ထုတ်မည်", type="primary"):
         st.error(f"❌ အမှားအယွင်း ဖြစ်ပေါ်သွားပါသည်: {str(e)}")
   else:
     st.warning("⚠️ ကျေးဇူးပြု၍ YouTube Movie Recap Link ကို ရိုက်ထည့်ပေးပါ။")
+      
