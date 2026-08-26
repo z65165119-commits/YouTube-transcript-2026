@@ -7,7 +7,7 @@ import streamlit as st
 from youtube_transcript_api import YouTubeTranscriptApi
 
 st.set_page_config(
-    page_title="DeepLearn AI - YouTube Myanmar Voiceover Script",
+    page_title="DeepLearn AI - YouTube Myanmar Text Script",
     page_icon="🎬",
     layout="wide",
 )
@@ -73,7 +73,7 @@ if "logged_in" not in st.session_state:
 col_title, col_auth = st.columns([3, 1])
 
 with col_title:
-  st.title("🎬 DeepLearn AI - YouTube Myanmar Script Studio")
+  st.title("🎬 DeepLearn AI - YouTube Myanmar Text Script")
 
 with col_auth:
   if st.session_state["logged_in"]:
@@ -177,7 +177,7 @@ def fetch_transcript_with_timestamps(v_id):
   return None
 
 
-if st.button("⚡ စကားပြော မြန်မာပြန် Script ထုတ်မည်", type="primary"):
+if st.button("⚡ မြန်မာစာ Script ထုတ်မည်", type="primary"):
   active_key = user_api_key.strip() if user_api_key else secret_api_key
   if not active_key:
     st.warning(
@@ -195,12 +195,11 @@ if st.button("⚡ စကားပြော မြန်မာပြန် Script
 
         with st.spinner(
             "⏳ YouTube Transcript စာသားများကို ဆွဲထုတ်ပြီး မြန်မာလို"
-            " တိုက်ရိုက် စကားပြော ဘာသာပြန်ပေးနေပါပြီ..."
+            " ဘာသာပြန်ပေးနေပါပြီ..."
         ):
           transcript_text = fetch_transcript_with_timestamps(video_id)
 
           genai.configure(api_key=active_key)
-          # Updated to gemini-3.6-flash as per the latest API specs
           model = genai.GenerativeModel("gemini-3.6-flash")
 
           if transcript_text:
@@ -230,18 +229,18 @@ if st.button("⚡ စကားပြော မြန်မာပြန် Script
               else "မြန်မာပြန် စာသား ထုတ်ယူ၍မရပါ။"
           )
 
-        st.success("👑 မြန်မာ စကားပြော ဘာသာပြန် Script အောင်မြင်စွာ ထွက်ရှိလာပါပြီ!")
+        st.success("👑 မြန်မာစာ Script အောင်မြင်စွာ ထွက်ရှိလာပါပြီ!")
 
         if not is_vip:
           increment_user_usage(clean_email)
 
         st.markdown("---")
-        st.subheader("🎙️ ဗီဒီယို စကားပြော မြန်မာပြန် Script (Voiceover ဖတ်ရန်)")
+        st.subheader("📝 မြန်မာစာ Script (Voiceover ဖတ်ရန်)")
         st.code(full_myanmar_script, height=500)
         st.download_button(
             "📥 Download မြန်မာ Script (.txt)",
             data=full_myanmar_script.encode("utf-8-sig"),
-            file_name="youtube_spoken_myanmar_script.txt",
+            file_name="youtube_myanmar_script.txt",
             mime="text/plain; charset=utf-8",
         )
 
@@ -249,4 +248,4 @@ if st.button("⚡ စကားပြော မြန်မာပြန် Script
         st.error(f"❌ အမှားအယွင်း ဖြစ်ပေါ်သွားပါသည်: {str(e)}")
   else:
     st.warning("⚠️ ကျေးဇူးပြု၍ YouTube Video Link ကို ရိုက်ထည့်ပေးပါ။")
-            
+          
