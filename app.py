@@ -247,7 +247,7 @@ if st.button("⚡ Movie Recap Script ထုတ်မည်", type="primary"):
           est_read_time = round(words / 150, 1)
 
           # ၂။ AI Summary ထုတ်မည်
-          sum_model = genai.GenerativeModel("gemini-2.5-flash")
+          sum_model = genai.GenerativeModel("gemini-3.5-flash")
           sum_prompt = (
               "Provide a short captivating summary and logline of this movie in"
               f" both English and Myanmar ({summary_length} version):"
