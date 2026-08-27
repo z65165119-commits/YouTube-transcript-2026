@@ -186,7 +186,7 @@ def fetch_transcript_text(v_id):
   return None
 
 
-if st.button("⚡ Movie Recap Script ထုတ်မည်", type="primary"):
+if st.button("⚡ Movie Recap Script ထုတ်ပေးမည်", type="primary"):
   if not user_api_key:
     st.warning(
         "⚠️ ကျေးဇူးပြု၍ Google Gemini API Key ကို Streamlit Secrets (သို့) Sidebar"
@@ -203,31 +203,37 @@ if st.button("⚡ Movie Recap Script ထုတ်မည်", type="primary"):
         raw_text_combined = ""
 
         with st.spinner(
-            "⏳ YouTube ဗီဒီယိုမှ ဇာတ်လမ်း Transcript များကို ဆွဲထုတ်နေပြီး"
-            " Gemini AI ဖြင့် မြန်မာဘာသာသို့ ဘာသာပြန်ဆိုနေပါပြီ..."
+            "⏳ Gemini AI က ဗီဒီယိုအချက်အလက်များကို လေ့လာပြီး မြန်မာဘာသာသို့"
+            " ပြောင်းလဲနေပါပြီ..."
         ):
-          # ၁။ YouTube Transcript ကို အရင်လှမ်းယူမည်
+          # ၁။ YouTube Transcript ကို အရင်လှမ်းယူကြည့်မည်
           transcript_text = fetch_transcript_text(video_id)
-
-          if not transcript_text:
-            st.error(
-                "❌ ဤ YouTube ဗီဒီယိုတွင် Transcript (စာသားများ) ရယူ၍ မရပါ"
-                " (သို့မဟုတ်) Captions ပိတ်ထားပါသည်။ ကျေးဇူးပြု၍ အခြား ဗီဒီယိုလင့်ခ်"
-                " တစ်ခုဖြင့် ပြန်စမ်းပါ။"
-            )
-            st.stop()
 
           genai.configure(api_key=user_api_key.strip())
           model = genai.GenerativeModel("gemini-3.6-flash")
 
-          prompt = (
-              "You are a professional YouTube Movie Recap scriptwriter. Read the"
-              " following English YouTube video transcript and rewrite/translate"
-              " it into an extremely engaging, natural, suspenseful, and fluent"
-              " Myanmar (Burmese) script suitable for a voiceover movie recap"
-              " video. Make it sound professional and cinematic:\n\n"
-              f"{transcript_text[:15000]}"
-          )
+          if transcript_text:
+            # Transcript ရလျှင် ၎င်းကို သုံးမည်
+            raw_text_combined = transcript_text
+            prompt = (
+                "You are a professional YouTube Movie Recap scriptwriter. Read"
+                " the following English YouTube video transcript and"
+                " rewrite/translate it into an extremely engaging, natural,"
+                " suspenseful, and fluent Myanmar (Burmese) script suitable"
+                " for a voiceover movie recap video. Make it sound professional"
+                " and cinematic:\n\n"
+                f"{raw_text_combined[:15000]}"
+            )
+          else:
+            # Transcript မရလျှင် ဗီဒီယိုလင့်ခ်ကို ကိုယ်တိုင်သုံးသပ်ခိုင်းမည် (သို့မဟုတ် General knowledge အပေါ်မူတည်၍ ရေးခိုင်းမည်)
+            raw_text_combined = f"YouTube Video URL: {video_url}"
+            prompt = (
+                f"Please analyze the movie or video associated with this YouTube"
+                f" link: {video_url}. Provide a comprehensive, detailed, highly"
+                " engaging, and cinematic movie recap script in natural"
+                " Myanmar (Burmese) language."
+            )
+
           response = model.generate_content(prompt)
           full_myanmar_script = (
               response.text.strip()
@@ -235,15 +241,15 @@ if st.button("⚡ Movie Recap Script ထုတ်မည်", type="primary"):
               else "AI generation failed."
           )
 
-          words = len(transcript_text.split())
-          est_read_time = round(words / 150, 1)
+          words = len(raw_text_combined.split())
+          est_read_time = round(words / 150, 1) if words > 0 else 5.0
 
           # ၂။ AI Summary ထုတ်မည်
           sum_model = genai.GenerativeModel("gemini-3.6-flash")
           sum_prompt = (
               "Provide a short captivating summary and logline of this movie in"
               f" both English and Myanmar ({summary_length} version):"
-              f"\n\n{transcript_text[:4000]}"
+              f"\n\n{raw_text_combined[:4000]}"
           )
           sum_res = sum_model.generate_content(sum_prompt)
           summary_text = (
@@ -284,4 +290,4 @@ if st.button("⚡ Movie Recap Script ထုတ်မည်", type="primary"):
         st.error(f"❌ အမှားအယွင်း ဖြစ်ပေါ်သွားပါသည်: {str(e)}")
   else:
     st.warning("⚠️ ကျေးဇူးပြု၍ YouTube Movie Recap Link ကို ရိုက်ထည့်ပေးပါ။")
-                                                     
+          
