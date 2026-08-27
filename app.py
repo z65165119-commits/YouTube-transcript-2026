@@ -7,8 +7,8 @@ import streamlit as st
 from youtube_transcript_api import YouTubeTranscriptApi
 
 st.set_page_config(
-    page_title="YouTube AI Studio & Script Suite",
-    page_icon="🔴",
+    page_title="DeepLearn AI - YouTube Myanmar Text Script",
+    page_icon="🎬",
     layout="wide",
 )
 
@@ -73,7 +73,7 @@ if "logged_in" not in st.session_state:
 col_title, col_auth = st.columns([3, 1])
 
 with col_title:
-  st.title("🔴⚡ YouTube AI Studio (Movie Recap Pro)")
+  st.title("🎬 DeepLearn AI - YouTube Myanmar Text Script")
 
 with col_auth:
   if st.session_state["logged_in"]:
@@ -139,37 +139,18 @@ user_api_key = st.sidebar.text_input(
     "API Key ထည့်ရန်",
     value=secret_api_key,
     type="password",
-    help=(
-        "Streamlit Secrets တွင် ထည့်ထားခြင်း မရှိပါက ဤနေရာတွင် တိုက်ရိုက်"
-        " ထည့်နိုင်ပါသည်။"
-    ),
-)
-
-st.sidebar.markdown("---")
-st.sidebar.header("⚙️ Options")
-summary_length = st.sidebar.select_slider(
-    "AI Summary အတိုအရှည်",
-    options=["Short", "Medium", "Detailed"],
-    value="Medium",
+    help="Streamlit Secrets မှ သို့မဟုတ် ဤနေရာတွင် တိုက်ရိုက်ထည့်ပါ။",
 )
 
 if not is_vip and current_usage >= FREE_LIMIT:
   st.error("❌ သင့်၏ အခမဲ့ ၅ ကြိမ် အသုံးပြုခွင့် ကုန်ဆုံးသွားပါပြီ။")
-  st.warning(
-      "ဆက်လက်အသုံးပြုလိုပါက Telegram **@lynn_m2026** ထံသို့ ဆက်သွယ်၍ **VIP"
-      " Access** ရယူပါရန်။"
-  )
+  st.warning("ဆက်လက်အသုံးပြုလိုပါက Telegram **@lynn_m2026** ထံသို့ ဆက်သွယ်ပါ။")
   st.stop()
 
 # ---------------------------------------------------------
 # 🎬 MAIN APP LOGIC
 # ---------------------------------------------------------
-video_url = st.text_input("🔗 YouTube Movie Recap Video URL ကို ရိုက်ထည့်ပါ:", "")
-manual_movie_title = st.text_input(
-    "🎬 ရုပ်ရှင်နာမည် (သို့) အဓိက အကြောင်းအရာ (Transcript မရပါက ဤနေရာတွင်"
-    " ဖြည့်ပါ):",
-    "",
-)
+video_url = st.text_input("🔗 YouTube Video URL ကို ရိုက်ထည့်ပါ:", "")
 
 
 def extract_video_id(url):
@@ -177,128 +158,107 @@ def extract_video_id(url):
   return match.group(1) if match else None
 
 
-def fetch_transcript_text(v_id):
+def fetch_transcript_items(video_id):
   try:
-    transcript_list = YouTubeTranscriptApi.list_transcripts(v_id)
-    for transcript in transcript_list:
-      fetched = transcript.fetch()
-      if fetched:
-        return " ".join([entry["text"].strip() for entry in fetched])
-  except Exception as e:
-    print(f"Transcript Error: {e}")
+    # Fetch list of transcripts, supporting auto-generated/manual english or any available language
+    transcript_list = YouTubeTranscriptApi.list_transcripts(video_id)
+    transcript = None
+
+    try:
+      transcript = transcript_list.find_transcript(["en", "en-US", "my"])
+    except Exception:
+      for tr in transcript_list:
+        transcript = tr
+        break
+
+    if transcript:
+      return transcript.fetch()
+  except Exception:
+    try:
+      # Fallback to direct get_transcript if list_transcripts fails
+      return YouTubeTranscriptApi.get_transcript(video_id, languages=["en", "my"])
+    except Exception as e:
+      st.error(f"Transcript ထုတ်ယူရာတွင် အမှားရှိပါသည်: {str(e)}")
+      return None
   return None
 
 
-if st.button("⚡ Movie Recap Script ထုတ်မည်", type="primary"):
-  if not user_api_key:
+if st.button("⚡ မြန်မာစာ Script ထုတ်မည်", type="primary"):
+  active_key = user_api_key.strip() if user_api_key else secret_api_key
+  if not active_key:
     st.warning(
-        "⚠️ ကျေးဇူးပြု၍ Google Gemini API Key ကို Streamlit Secrets (သို့) Sidebar"
-        " တွင် ထည့်ပေးပါ။"
+        "⚠️ ကျေးဇူးပြု၍ Sidebar တွင် Google Gemini API Key ထည့်ပေးပါ (သို့မဟုတ်"
+        " Secrets တွင် သတ်မှတ်ပေးပါ)။"
     )
-  elif video_url or manual_movie_title:
-    try:
-      if video_url:
+  elif video_url:
+    video_id = extract_video_id(video_url)
+    if not video_id:
+      st.error("❌ YouTube Link မမှန်ပါ။ ပြန်စစ်ပေးပါ။")
+    else:
+      try:
         st.video(video_url)
-        video_id = extract_video_id(video_url)
-      else:
-        video_id = None
+        full_myanmar_script = ""
 
-      full_myanmar_script = ""
-      source_text = ""
+        with st.spinner(
+            "⏳ YouTube Transcript ဆွဲထုတ်နေပြီး Gemini AI ဖြင့်"
+            " မြန်မာလိုဘာသာပြန်နေပါပြီ..."
+        ):
+          transcript_items = fetch_transcript_items(video_id)
 
-      with st.spinner(
-          "⏳ Gemini AI ဖြင့် မြန်မာ Movie Recap Script ကို ဖန်တီးနေပါပြီ..."
-      ):
-        genai.configure(api_key=user_api_key.strip())
-        model = genai.GenerativeModel("gemini-3.6-flash")
+          if transcript_items:
+            genai.configure(api_key=active_key)
+            model = genai.GenerativeModel("gemini-1.5-flash")
 
-        # ၁။ Transcript ဆွဲထုတ်ရန် ကြိုးစားမည်
-        transcript_text = None
-        if video_id:
-          transcript_text = fetch_transcript_text(video_id)
+            chunk_size = 60
+            for i in range(0, len(transcript_items), chunk_size):
+              chunk = transcript_items[i : i + chunk_size]
+              chunk_text = ""
+              for item in chunk:
+                start_time = int(item.get("start", 0))
+                minutes = start_time // 60
+                seconds = start_time % 60
+                time_str = f"[{minutes:02d}:{seconds:02d}]"
+                chunk_text += f"{time_str} {item.get('text', '').strip()}\n"
 
-        if transcript_text:
-          source_text = transcript_text
-          prompt = (
-              "You are a professional YouTube Movie Recap scriptwriter. Read"
-              " the following English YouTube video transcript and"
-              " rewrite/translate it into an extremely engaging, natural,"
-              " suspenseful, and fluent Myanmar (Burmese) script suitable"
-              " for a voiceover movie recap video. Make it sound professional"
-              " and cinematic:\n\n"
-              f"{source_text[:15000]}"
-          )
-        elif manual_movie_title:
-          source_text = manual_movie_title
-          prompt = (
-              f"Provide a comprehensive, highly engaging, suspenseful, and"
-              f" cinematic movie recap script in natural Myanmar (Burmese)"
-              f" language based on this movie title or topic:"
-              f" {manual_movie_title}."
-          )
-        else:
-          st.error(
-              "❌ ဤဗီဒီယိုတွင် Transcript မရှိပါ။ ကျေးဇူးပြု၍ အထက်ပါ box"
-              " တွင် ရုပ်ရှင်နာမည်ကို ထည့်ပေးပါ။"
-          )
-          st.stop()
+              prompt = (
+                  "You are an expert translator. Below is a segment of a"
+                  " YouTube video transcript with timestamps. Translate the"
+                  " spoken text line-by-line into natural, fluent, spoken-style"
+                  " Myanmar (Burmese) language so the user can easily read and"
+                  " record their own voiceover. Keep the timestamps like [00:15]"
+                  " so the user knows when each part is spoken.\n\nSegment:\n"
+                  f"{chunk_text}"
+              )
 
-        response = model.generate_content(prompt)
-        full_myanmar_script = (
-            response.text.strip()
-            if response and response.text
-            else "AI generation failed."
-        )
+              response = model.generate_content(prompt)
+              if response and response.text:
+                full_myanmar_script += response.text.strip() + "\n"
 
-        words = len(source_text.split())
-        est_read_time = round(words / 150, 1) if words > 0 else 5.0
+            if full_myanmar_script:
+              st.success("👑 မြန်မာစာ Script အောင်မြင်စွာ ထွက်ရှိလာပါပြီ!")
 
-        # ၂။ AI Summary ထုတ်မည်
-        sum_model = genai.GenerativeModel("gemini-3.6-flash")
-        sum_prompt = (
-            "Provide a short captivating summary and logline of this movie in"
-            f" both English and Myanmar ({summary_length} version):"
-            f"\n\n{source_text[:4000]}"
-        )
-        sum_res = sum_model.generate_content(sum_prompt)
-        summary_text = (
-            sum_res.text if sum_res and sum_res.text else "Summary not available."
-        )
+              if not is_vip:
+                increment_user_usage(clean_email)
 
-      st.success("👑 Movie Recap Script အောင်မြင်စွာ ထွက်ရှိလာပါပြီ!")
+              st.markdown("---")
+              st.subheader("📝 မြန်မာစာ Script (Voiceover ဖတ်ရန်)")
+              st.code(full_myanmar_script, height=500)
+              st.download_button(
+                  "📥 Download မြန်မာ Script (.txt)",
+                  data=full_myanmar_script.encode("utf-8-sig"),
+                  file_name="youtube_myanmar_script.txt",
+                  mime="text/plain; charset=utf-8",
+              )
+            else:
+              st.error("❌ ဘာသာပြန်ဆိုမှု အထွက် မရှိပါ။")
+          else:
+            st.error(
+                "❌ ဤဗီဒီယိုတွင် Transcript (စာတန်းထိုး) ရယူ၍မရပါ သို့မဟုတ်"
+                " ပိတ်ထားခြင်း ဖြစ်နိုင်ပါသည်။"
+            )
 
-      if not is_vip:
-        increment_user_usage(clean_email)
-
-      m1, m2 = st.columns(2)
-      m1.metric("📝 ခန့်မှန်း စာလုံးရေ (Words)", f"{words:,}")
-      m2.metric("⏱️ ပြောဆိုဖတ်ရှုချိန်", f"{est_read_time} မိနစ်ခန့်")
-
-      st.markdown("---")
-
-      tab1, tab2 = st.tabs([
-          "🇲🇲 မြန်မာ Movie Recap Script",
-          "🤖 AI Story Summary",
-      ])
-
-      with tab1:
-        st.subheader("မြန်မာ Movie Recap Script")
-        st.code(full_myanmar_script, height=450)
-        st.download_button(
-            "📥 Download မြန်မာ Script (.txt)",
-            data=full_myanmar_script.encode("utf-8-sig"),
-            file_name="movie_recap_myanmar_script.txt",
-            mime="text/plain; charset=utf-8",
-        )
-
-      with tab2:
-        st.subheader("🤖 AI Story Summary & Logline")
-        st.write(summary_text)
-
-    except Exception as e:
-      st.error(f"❌ အမှားအယွင်း ဖြစ်ပေါ်သွားပါသည်: {str(e)}")
+      except Exception as e:
+        st.error(f"❌ အမှားအယွင်း ဖြစ်ပေါ်သွားပါသည်: {str(e)}")
   else:
-    st.warning(
-        "⚠️ ကျေးဇူးပြု၍ YouTube Link (သို့) ရုပ်ရှင်နာမည် တစ်ခုခုကို ထည့်ပေးပါ။"
-    )
-        
+    st.warning("⚠️ ကျေးဇူးပြု၍ YouTube Video Link ကို ရိုက်ထည့်ပေးပါ။")
+                                                 
