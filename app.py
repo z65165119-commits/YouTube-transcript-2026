@@ -209,49 +209,41 @@ if st.button("⚡ Movie Recap Script ထုတ်မည်", type="primary"):
           # ၁။ YouTube Transcript ကို အရင်လှမ်းယူမည်
           transcript_text = fetch_transcript_text(video_id)
 
+          if not transcript_text:
+            st.error(
+                "❌ ဤ YouTube ဗီဒီယိုတွင် Transcript (စာသားများ) ရယူ၍ မရပါ"
+                " (သို့မဟုတ်) Captions ပိတ်ထားပါသည်။ ကျေးဇူးပြု၍ အခြား ဗီဒီယိုလင့်ခ်"
+                " တစ်ခုဖြင့် ပြန်စမ်းပါ။"
+            )
+            st.stop()
+
           genai.configure(api_key=user_api_key.strip())
-          model = genai.GenerativeModel("gemini-3.5-flash")
+          model = genai.GenerativeModel("gemini-3.6-flash")
 
-          if transcript_text:
-            raw_text_combined = transcript_text
-            prompt = (
-                "You are a professional YouTube Movie Recap scriptwriter."
-                " Read the following English YouTube video transcript and"
-                " rewrite/translate it into an extremely engaging, natural,"
-                " suspenseful, and fluent Myanmar (Burmese) script suitable"
-                " for a voiceover movie recap video. Make it sound professional"
-                " and cinematic:\n\n"
-                f"{raw_text_combined[:15000]}"
-            )
-            response = model.generate_content(prompt)
-            full_myanmar_script = (
-                response.text.strip()
-                if response and response.text
-                else "AI generation failed."
-            )
-          else:
-            prompt = (
-                f"Please analyze the YouTube video at this URL: {video_url}."
-                " Provide a comprehensive, detailed cinematic movie recap script"
-                " in natural Myanmar (Burmese) language."
-            )
-            response = model.generate_content(prompt)
-            full_myanmar_script = (
-                response.text.strip()
-                if response and response.text
-                else "Could not process video."
-            )
-            raw_text_combined = full_myanmar_script
+          prompt = (
+              "You are a professional YouTube Movie Recap scriptwriter. Read the"
+              " following English YouTube video transcript and rewrite/translate"
+              " it into an extremely engaging, natural, suspenseful, and fluent"
+              " Myanmar (Burmese) script suitable for a voiceover movie recap"
+              " video. Make it sound professional and cinematic:\n\n"
+              f"{transcript_text[:15000]}"
+          )
+          response = model.generate_content(prompt)
+          full_myanmar_script = (
+              response.text.strip()
+              if response and response.text
+              else "AI generation failed."
+          )
 
-          words = len(raw_text_combined.split())
+          words = len(transcript_text.split())
           est_read_time = round(words / 150, 1)
 
           # ၂။ AI Summary ထုတ်မည်
-          sum_model = genai.GenerativeModel("gemini-3.5-flash")
+          sum_model = genai.GenerativeModel("gemini-3.6-flash")
           sum_prompt = (
               "Provide a short captivating summary and logline of this movie in"
               f" both English and Myanmar ({summary_length} version):"
-              f"\n\n{raw_text_combined[:4000]}"
+              f"\n\n{transcript_text[:4000]}"
           )
           sum_res = sum_model.generate_content(sum_prompt)
           summary_text = (
@@ -292,4 +284,4 @@ if st.button("⚡ Movie Recap Script ထုတ်မည်", type="primary"):
         st.error(f"❌ အမှားအယွင်း ဖြစ်ပေါ်သွားပါသည်: {str(e)}")
   else:
     st.warning("⚠️ ကျေးဇူးပြု၍ YouTube Movie Recap Link ကို ရိုက်ထည့်ပေးပါ။")
-    
+                                                     
