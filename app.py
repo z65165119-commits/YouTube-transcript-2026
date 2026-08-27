@@ -210,7 +210,7 @@ if st.button("⚡ Movie Recap Script ထုတ်မည်", type="primary"):
           transcript_text = fetch_transcript_text(video_id)
 
           genai.configure(api_key=user_api_key.strip())
-          model = genai.GenerativeModel("gemini-2.5-flash")
+          model = genai.GenerativeModel("gemini-3.5-flash")
 
           if transcript_text:
             raw_text_combined = transcript_text
