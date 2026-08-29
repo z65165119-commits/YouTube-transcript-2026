@@ -178,14 +178,18 @@ if st.button("⚡ မြန်မာစာ Script ထုတ်မည်", type="
             "⏳ YouTube Transcript ဆွဲထုတ်နေပြီး Gemini AI ဖြင့်"
             " မြန်မာလိုဘာသာပြန်နေပါပြီ..."
         ):
-          # Direct function call using get_transcript
+          # Universal compatibility method for fetching transcript safely
+          transcript_items = None
           try:
-            transcript_items = YouTubeTranscriptApi.get_transcript(
-                video_id, languages=["en", "my"]
-            )
-          except Exception:
-            # Fallback if language argument fails
+            # Try old/direct static method first
             transcript_items = YouTubeTranscriptApi.get_transcript(video_id)
+          except Exception:
+            try:
+              # Try instance fetch method as fallback
+              ytt_api = YouTubeTranscriptApi()
+              transcript_items = ytt_api.fetch(video_id)
+            except Exception as sub_err:
+              st.error(f"Transcript ထုတ်ယူ၍မရပါ: {str(sub_err)}")
 
           if transcript_items:
             genai.configure(api_key=active_key)
@@ -196,19 +200,31 @@ if st.button("⚡ မြန်မာစာ Script ထုတ်မည်", type="
               chunk = transcript_items[i : i + chunk_size]
               chunk_text = ""
               for item in chunk:
-                start_time = int(item.get("start", 0))
+                # Safe handling whether item is dictionary or object
+                try:
+                  if isinstance(item, dict):
+                    start_time = int(item.get("start", 0))
+                    text_val = str(item.get("text", ""))
+                  else:
+                    start_time = int(getattr(item, "start", 0))
+                    text_val = str(getattr(item, "text", ""))
+                except Exception:
+                  start_time = 0
+                  text_val = str(item)
+
                 minutes = start_time // 60
                 seconds = start_time % 60
                 time_str = f"[{minutes:02d}:{seconds:02d}]"
-                chunk_text += f"{time_str} {item.get('text', '').strip()}\n"
+                chunk_text += f"{time_str} {text_val.strip()}\n"
 
               prompt = (
-                  "You are an expert translator. Below is a segment of a"
-                  " YouTube video transcript with timestamps. Translate the"
-                  " spoken text line-by-line into natural, fluent, spoken-style"
-                  " Myanmar (Burmese) language so the user can easily read and"
-                  " record their own voiceover. Keep the timestamps like [00:15]"
-                  " so the user knows when each part is spoken.\n\nSegment:\n"
+                  "You are an expert translator and content creator. Below is a"
+                  " segment of a YouTube video transcript with timestamps."
+                  " Translate the spoken text line-by-line into natural, fluent,"
+                  " spoken-style Myanmar (Burmese) language so the user can"
+                  " easily read and record their own voiceover just like the"
+                  " original video. Keep the timestamps like [00:15] intact so"
+                  " the timing matches.\n\nSegment:\n"
                   f"{chunk_text}"
               )
 
@@ -243,4 +259,3 @@ if st.button("⚡ မြန်မာစာ Script ထုတ်မည်", type="
         st.error(f"❌ အမှားအယွင်း ဖြစ်ပေါ်သွားပါသည်: {str(e)}")
   else:
     st.warning("⚠️ ကျေးဇူးပြု၍ YouTube Video Link ကို ရိုက်ထည့်ပေးပါ။")
-              
