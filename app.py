@@ -158,18 +158,6 @@ def extract_video_id(url):
   return match.group(1) if match else None
 
 
-def fetch_transcript_items(video_id):
-  try:
-    # Modern approach to fetch list of transcripts and extract text directly
-    transcript_list = YouTubeTranscriptApi.list_transcripts(video_id)
-    for transcript in transcript_list:
-      return transcript.fetch()
-  except Exception as e:
-    st.error(f"Transcript ထုတ်ယူရာတွင် အမှားရှိပါသည်: {str(e)}")
-    return None
-  return None
-
-
 if st.button("⚡ မြန်မာစာ Script ထုတ်မည်", type="primary"):
   active_key = user_api_key.strip() if user_api_key else secret_api_key
   if not active_key:
@@ -190,7 +178,14 @@ if st.button("⚡ မြန်မာစာ Script ထုတ်မည်", type="
             "⏳ YouTube Transcript ဆွဲထုတ်နေပြီး Gemini AI ဖြင့်"
             " မြန်မာလိုဘာသာပြန်နေပါပြီ..."
         ):
-          transcript_items = fetch_transcript_items(video_id)
+          # Direct function call using get_transcript
+          try:
+            transcript_items = YouTubeTranscriptApi.get_transcript(
+                video_id, languages=["en", "my"]
+            )
+          except Exception:
+            # Fallback if language argument fails
+            transcript_items = YouTubeTranscriptApi.get_transcript(video_id)
 
           if transcript_items:
             genai.configure(api_key=active_key)
@@ -201,27 +196,11 @@ if st.button("⚡ မြန်မာစာ Script ထုတ်မည်", type="
               chunk = transcript_items[i : i + chunk_size]
               chunk_text = ""
               for item in chunk:
-                # Direct dictionary/object attribute access matching fetched snippet structure
-                try:
-                  start_time = int(item["start"])
-                except Exception:
-                  try:
-                    start_time = int(item.start)
-                  except Exception:
-                    start_time = 0
-
-                try:
-                  text_val = str(item["text"])
-                except Exception:
-                  try:
-                    text_val = str(item.text)
-                  except Exception:
-                    text_val = ""
-
+                start_time = int(item.get("start", 0))
                 minutes = start_time // 60
                 seconds = start_time % 60
                 time_str = f"[{minutes:02d}:{seconds:02d}]"
-                chunk_text += f"{time_str} {text_val.strip()}\n"
+                chunk_text += f"{time_str} {item.get('text', '').strip()}\n"
 
               prompt = (
                   "You are an expert translator. Below is a segment of a"
@@ -264,4 +243,4 @@ if st.button("⚡ မြန်မာစာ Script ထုတ်မည်", type="
         st.error(f"❌ အမှားအယွင်း ဖြစ်ပေါ်သွားပါသည်: {str(e)}")
   else:
     st.warning("⚠️ ကျေးဇူးပြု၍ YouTube Video Link ကို ရိုက်ထည့်ပေးပါ။")
-    
+              
