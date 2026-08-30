@@ -4,7 +4,52 @@ import os
 from youtube_transcript_api import YouTubeTranscriptApi
 from gtts import gTTS
 
-st.set_page_config(page_title="YouTube Transcript & Myanmar Audio", page_icon="🎬", layout="centered")
+# --- PAGE CONFIG & PROFESSIONAL UI STYLING ---
+st.set_page_config(page_title="Youtube to Transcribe", page_icon="📝", layout="centered")
+
+st.markdown("""
+    <style>
+    .main {
+        background-color: #ffffff;
+    }
+    h1 {
+        color: #111111;
+        text-align: center;
+        font-weight: 800;
+        font-size: 2.5rem;
+        margin-bottom: 0px;
+    }
+    .subtitle {
+        text-align: center;
+        color: #555555;
+        font-size: 16px;
+        margin-bottom: 30px;
+    }
+    .stButton>button {
+        background-color: #2563eb;
+        color: white;
+        font-size: 16px;
+        font-weight: 600;
+        width: 100%;
+        border-radius: 6px;
+        height: 48px;
+        border: none;
+    }
+    .stButton>button:hover {
+        background-color: #1d4ed8;
+        color: white;
+    }
+    .features {
+        display: flex;
+        justify-content: space-around;
+        text-align: center;
+        color: #666666;
+        font-size: 14px;
+        margin-top: 20px;
+        margin-bottom: 30px;
+    }
+    </style>
+""", unsafe_allow_html=True)
 
 # --- 1. DATABASE SETUP ---
 def init_db():
@@ -41,10 +86,23 @@ def update_credits(email, credits):
     conn.commit()
     conn.close()
 
-# --- 2. LOGIN UI (Gmail) ---
-st.title("🎬 YouTube Transcript & Myanmar Audio Generator")
+# --- 2. UI HEADER (Professional Layout) ---
+st.markdown("<br>", unsafe_allow_html=True)
+st.markdown("<h1>Youtube to Transcribe</h1>", unsafe_allow_html=True)
+st.markdown("<div class='subtitle'>Generate YouTube Transcript for FREE. Access all Transcript Languages, Translate to 125+ Languages, Easy Copy and Edit!</div>", unsafe_allow_html=True)
 
-# လောလောဆယ် ရိုးရှင်းလွယ်ကူစေရန် Gmail ထည့်သွင်း login လုပ်သောပုံစံသုံးထားသည်
+# Features list equivalent to reference image
+st.markdown("""
+    <div class='features'>
+        <span>⚡ One-click Copy</span>
+        <span>🌐 Supports Translation</span>
+        <span>🌍 Multiple Languages</span>
+    </div>
+""", unsafe_allow_html=True)
+
+st.markdown("---")
+
+# Gmail ဖြင့် ဝင်ရောက်ရန်
 user_email = st.text_input("ဆက်လက်သုံးစွဲရန် သင့်ရဲ့ Gmail လိပ်စာကို ထည့်ပါ:")
 
 if not user_email:
@@ -66,7 +124,6 @@ else:
         st.sidebar.markdown("👉 Telegram: **@lynn_m2026**")
 
     # --- 3. MAIN APP LOGIC ---
-    st.markdown("---")
     url = st.text_input("YouTube Video URL ကို ထည့်ပါ:", placeholder="https://www.youtube.com/watch?v=...")
 
     def extract_video_id(url):
@@ -76,7 +133,7 @@ else:
             return url.split("watch?v=")[1].split("&")[0]
         return None
 
-    if st.button("🚀 စာသားနှင့် အသံထုတ်ယူမည်"):
+    if st.button("Get Free Transcript"):
         if not url:
             st.warning("ကျေးဇူးပြု၍ YouTube လင့်ခ် ထည့်ပါ။")
         elif not is_vip and credits <= 0:
@@ -88,15 +145,8 @@ else:
             else:
                 with st.spinner("⏳ လုပ်ဆောင်နေပါပြီ၊ ခဏစောင့်ပါ..."):
                     try:
-                        # Transcript ဆွဲထုတ်ခြင်း
-                        transcript_data = YouTubeTranscriptApi.list_transcripts(video_id)
-                        try:
-                            transcript = transcript_data.find_transcript(['my', 'en'])
-                        except:
-                            transcript = transcript_data.find_generated_transcript(['my', 'en'])
-                            
-                        transcript_list = transcript.fetch()
-                        full_text = " ".join([entry['text'] for entry in transcript_list])
+                        fetched_data = YouTubeTranscriptApi.get_transcript(video_id, languages=['my', 'en'])
+                        full_text = " ".join([entry['text'] for entry in fetched_data])
                         
                         st.success("အောင်မြင်စွာ ထုတ်ယူပြီးပါပြီ!")
                         st.subheader("📝 Transcript စာသားများ")
@@ -120,7 +170,6 @@ else:
                         if os.path.exists(audio_path):
                             os.remove(audio_path)
 
-                        # Free user ဆိုလျှင် Quota တစ်ခုလျှော့မည်
                         if not is_vip:
                             new_credits = credits - 1
                             update_credits(user_email, new_credits)
