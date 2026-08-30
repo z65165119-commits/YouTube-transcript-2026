@@ -86,12 +86,11 @@ def update_credits(email, credits):
     conn.commit()
     conn.close()
 
-# --- 2. UI HEADER (Professional Layout) ---
+# --- 2. UI HEADER ---
 st.markdown("<br>", unsafe_allow_html=True)
 st.markdown("<h1>Youtube to Transcribe</h1>", unsafe_allow_html=True)
 st.markdown("<div class='subtitle'>Generate YouTube Transcript for FREE. Access all Transcript Languages, Translate to 125+ Languages, Easy Copy and Edit!</div>", unsafe_allow_html=True)
 
-# Features list equivalent to reference image
 st.markdown("""
     <div class='features'>
         <span>⚡ One-click Copy</span>
@@ -145,8 +144,9 @@ else:
             else:
                 with st.spinner("⏳ လုပ်ဆောင်နေပါပြီ၊ ခဏစောင့်ပါ..."):
                     try:
-                        fetched_data = YouTubeTranscriptApi.get_transcript(video_id, languages=['my', 'en'])
-                        full_text = " ".join([entry['text'] for entry in fetched_data])
+                        # ဗားရှင်းအသစ်နှင့် ကိုက်ညီစေရန် Transcript ရယူသည့် ပုံစံအသစ်
+                        transcript_list = YouTubeTranscriptApi.get_transcript(video_id)
+                        full_text = " ".join([entry['text'] for entry in transcript_list])
                         
                         st.success("အောင်မြင်စွာ ထုတ်ယူပြီးပါပြီ!")
                         st.subheader("📝 Transcript စာသားများ")
@@ -177,4 +177,4 @@ else:
 
                     except Exception as e:
                         st.error(f"❌ အမှားအယွင်း ဖြစ်ပေါ်သွားပါသည်: {str(e)}")
-                        
+                            
