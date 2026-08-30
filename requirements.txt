@@ -1,3 +1,6 @@
 streamlit
-youtube-transcript-api
+openai-whisper
+ffmpeg-python
 gtts
+numpy
+opencv-python
