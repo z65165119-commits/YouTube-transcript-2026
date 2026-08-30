@@ -101,41 +101,43 @@ st.markdown("""
 
 st.markdown("---")
 
-# Gmail ဖြင့် ဝင်ရောက်ရန်
-user_email = st.text_input("ဆက်လက်သုံးစွဲရန် သင့်ရဲ့ Gmail လိပ်စာကို ထည့်ပါ:")
-
-if not user_email:
-    st.info("💡 ကျေးဇူးပြု၍ သင်၏ Gmail ဖြင့် ဝင်ရောက်ပါ (အကောင့်သစ်များအတွက် Free ၅ ကြိမ် အလိုအလျောက်ရရှိမည်)။")
-else:
-    credits, is_vip = get_user_data(user_email)
-    
-    # Sidebar တွင် အကောင့်အချက်အလက်ပြသခြင်း
-    st.sidebar.title("👤 အကောင့်အချက်အလက်")
-    st.sidebar.write(f"**Email:** {user_email}")
-    
-    if is_vip:
-        st.sidebar.success("🌟 VIP အဖွဲ့ဝင် (အကန့်အသတ်မရှိ)")
-    else:
-        st.sidebar.info(f"🎁 ကျန်ရှိသော Free အကြိမ်ရေ: **{credits} / 5** ကြိမ်")
-        st.sidebar.markdown("---")
-        st.sidebar.subheader("💎 VIP သို့ ပြောင်းရန်")
-        st.sidebar.write("ဈေးနှုန်းနှင့် ဝယ်ယူရန် ဆက်သွယ်ရန်:")
-        st.sidebar.markdown("👉 Telegram: **@lynn_m2026**")
-
-    # --- 3. MAIN APP LOGIC ---
+# --- 3. INPUT FORM (Gmail နှင့် URL ကို တစ်ခါတည်း ဖြည့်နိုင်ရန် Form သုံးထားပါသည်) ---
+with st.form("transcript_form"):
+    user_email = st.text_input("ဆက်လက်သုံးစွဲရန် သင့်ရဲ့ Gmail လိပ်စာကို ထည့်ပါ:", placeholder="example@gmail.com")
     url = st.text_input("YouTube Video URL ကို ထည့်ပါ:", placeholder="https://www.youtube.com/watch?v=...")
+    
+    submitted = st.form_submit_button("Get Free Transcript")
 
-    def extract_video_id(url):
-        if "youtu.be/" in url:
-            return url.split("youtu.be/")[1].split("?")[0]
-        elif "watch?v=" in url:
-            return url.split("watch?v=")[1].split("&")[0]
-        return None
+# --- 4. MAIN APP LOGIC ---
+def extract_video_id(url):
+    if "youtu.be/" in url:
+        return url.split("youtu.be/")[1].split("?")[0]
+    elif "watch?v=" in url:
+        return url.split("watch?v=")[1].split("&")[0]
+    return None
 
-    if st.button("Get Free Transcript"):
-        if not url:
-            st.warning("ကျေးဇူးပြု၍ YouTube လင့်ခ် ထည့်ပါ။")
-        elif not is_vip and credits <= 0:
+if submitted:
+    if not user_email:
+        st.warning("ကျေးဇူးပြု၍ သင်၏ Gmail လိပ်စာကို ထည့်ပါ။")
+    elif not url:
+        st.warning("ကျေးဇူးပြု၍ YouTube လင့်ခ် ထည့်ပါ။")
+    else:
+        credits, is_vip = get_user_data(user_email)
+        
+        # Sidebar တွင် အကောင့်အချက်အလက်ပြသခြင်း
+        st.sidebar.title("👤 အကောင့်အချက်အလက်")
+        st.sidebar.write(f"**Email:** {user_email}")
+        
+        if is_vip:
+            st.sidebar.success("🌟 VIP အဖွဲ့ဝင် (အကန့်အသတ်မရှိ)")
+        else:
+            st.sidebar.info(f"🎁 ကျန်ရှိသော Free အကြိမ်ရေ: **{credits} / 5** ကြိမ်")
+            st.sidebar.markdown("---")
+            st.sidebar.subheader("💎 VIP သို့ ပြောင်းရန်")
+            st.sidebar.write("ဈေးနှုန်းနှင့် ဝယ်ယူရန် ဆက်သွယ်ရန်:")
+            st.sidebar.markdown("👉 Telegram: **@lynn_m2026**")
+
+        if not is_vip and credits <= 0:
             st.error("❌ Free Quota (၅ ကြိမ်) ကုန်ဆုံးသွားပါပြီ။ VIP ဝင်ရန် @lynn_m2026 သို့ ဆက်သွယ်ပါ။")
         else:
             video_id = extract_video_id(url)
@@ -144,9 +146,8 @@ else:
             else:
                 with st.spinner("⏳ လုပ်ဆောင်နေပါပြီ၊ ခဏစောင့်ပါ..."):
                     try:
-                        # ဗားရှင်းအသစ်နှင့် ကိုက်ညီစေရန် Transcript ရယူသည့် ပုံစံအသစ်
-                        transcript_list = YouTubeTranscriptApi.get_transcript(video_id)
-                        full_text = " ".join([entry['text'] for entry in transcript_list])
+                        fetched_data = YouTubeTranscriptApi.get_transcript(video_id)
+                        full_text = " ".join([entry['text'] for entry in fetched_data])
                         
                         st.success("အောင်မြင်စွာ ထုတ်ယူပြီးပါပြီ!")
                         st.subheader("📝 Transcript စာသားများ")
@@ -177,4 +178,4 @@ else:
 
                     except Exception as e:
                         st.error(f"❌ အမှားအယွင်း ဖြစ်ပေါ်သွားပါသည်: {str(e)}")
-                            
+                        
