@@ -1,261 +1,76 @@
-from datetime import datetime
-import json
-import os
-import re
-import google.generativeai as genai
 import streamlit as st
+import os
 from youtube_transcript_api import YouTubeTranscriptApi
+from gtts import gTTS
 
-st.set_page_config(
-    page_title="DeepLearn AI - YouTube Myanmar Text Script",
-    page_icon="🎬",
-    layout="wide",
-)
+st.set_page_config(page_title="YouTube to Transcript & Audio", page_icon="📝", layout="centered")
 
-# ---------------------------------------------------------
-# 🗄️ JSON DATABASE FUNCTIONS
-# ---------------------------------------------------------
-DB_FILE = "usage_db.json"
+st.title("🎬 YouTube Transcript & Myanmar Audio Generator")
+st.write("YouTube ဗီဒီယို လင့်ခ် (Link) ထည့်ရုံဖြင့် စာသား (Transcript) ထုတ်ယူပြီး မြန်မာအသံဖိုင်ပါ တစ်ခါတည်း ဖန်တီးနိုင်ပါပြီ။")
 
-
-def load_db():
-  if os.path.exists(DB_FILE):
-    try:
-      with open(DB_FILE, "r", encoding="utf-8") as f:
-        return json.load(f)
-    except Exception:
-      return {}
-  return {}
-
-
-def save_db(db):
-  with open(DB_FILE, "w", encoding="utf-8") as f:
-    json.dump(db, f, ensure_ascii=False, indent=4)
-
-
-def get_user_usage(email):
-  db = load_db()
-  clean_email = email.strip().lower()
-  if clean_email not in db:
-    db[clean_email] = {"count": 0, "first_used": str(datetime.now())}
-    save_db(db)
-  return db[clean_email]["count"]
-
-
-def increment_user_usage(email):
-  db = load_db()
-  clean_email = email.strip().lower()
-  if clean_email not in db:
-    db[clean_email] = {"count": 1, "first_used": str(datetime.now())}
-  else:
-    db[clean_email]["count"] += 1
-  save_db(db)
-
-
-# ---------------------------------------------------------
-# 🔑 LOGIN SESSION MANAGEMENT
-# ---------------------------------------------------------
-ALLOWED_EMAILS = [
-    "soemoe@gmail.com",
-    "customer1@gmail.com",
-    "zlynn7368@gmail.com",
-]
-
-FREE_LIMIT = 5
-
-if "logged_in" not in st.session_state:
-  st.session_state["logged_in"] = False
-  st.session_state["user_email"] = ""
-
-# ---------------------------------------------------------
-# 🔝 HEADER BAR
-# ---------------------------------------------------------
-col_title, col_auth = st.columns([3, 1])
-
-with col_title:
-  st.title("🎬 DeepLearn AI - YouTube Myanmar Text Script")
-
-with col_auth:
-  if st.session_state["logged_in"]:
-    st.write(f"👋 **{st.session_state['user_email']}**")
-    if st.button("Sign Out", key="signout_btn"):
-      st.session_state["logged_in"] = False
-      st.session_state["user_email"] = ""
-      st.rerun()
-
-# ---------------------------------------------------------
-# 🚨 MANDATORY LOGIN CHECK
-# ---------------------------------------------------------
-if not st.session_state["logged_in"]:
-  st.markdown("---")
-  st.warning("⚠️ App အသုံးပြုရန် သင့်၏ Gmail (သို့) Email ဖြင့် အရင် ဝင်ရောက်ပါ။")
-
-  with st.form("login_form"):
-    input_email = st.text_input("📧 Your Gmail Address:")
-    submit_login = st.form_submit_button("Sign In / ဝင်မည်", type="primary")
-
-    if submit_login:
-      if input_email and "@" in input_email:
-        st.session_state["logged_in"] = True
-        st.session_state["user_email"] = input_email.strip().lower()
-        st.success("✅ အောင်မြင်စွာ ဝင်ရောက်ပြီးပါပြီ!")
-        st.rerun()
-      else:
-        st.error("❌ ကျေးဇူးပြု၍ မှန်ကန်သော Email လိပ်စာ ထည့်ပါ။")
-
-  st.stop()
-
-clean_email = st.session_state["user_email"]
-allowed_emails_lower = [e.strip().lower() for e in ALLOWED_EMAILS]
-is_vip = clean_email in allowed_emails_lower
-current_usage = get_user_usage(clean_email)
-
-# ---------------------------------------------------------
-# ⚙️ SIDEBAR - API KEY & OPTIONS
-# ---------------------------------------------------------
-st.sidebar.header("👤 Account Info")
-st.sidebar.write(f"**Logged in as:**\n{clean_email}")
-
-if is_vip:
-  st.sidebar.success("👑 **VIP Unlimited Access**")
-else:
-  remaining = max(0, FREE_LIMIT - current_usage)
-  st.sidebar.info(f"🎁 အခမဲ့ သုံးစွဲခွင့် ကျန်ရှိသည့်အကြိမ်: {remaining} / {FREE_LIMIT}")
-  st.sidebar.markdown(
-      "💬 **VIP ဝယ်ယူရန် ဆက်သွယ်ရန်:**\nTelegram: [@lynn_m2026](https://t.me/lynn_m2026)"
-  )
-
-st.sidebar.markdown("---")
-st.sidebar.header("🔑 Google Gemini API Key")
-
-secret_api_key = ""
-try:
-  if "GEMINI_API_KEY" in st.secrets:
-    secret_api_key = st.secrets["GEMINI_API_KEY"]
-except Exception:
-  pass
-
-user_api_key = st.sidebar.text_input(
-    "API Key ထည့်ရန်",
-    value=secret_api_key,
-    type="password",
-    help="Streamlit Secrets မှ သို့မဟုတ် ဤနေရာတွင် တိုက်ရိုက်ထည့်ပါ။",
-)
-
-if not is_vip and current_usage >= FREE_LIMIT:
-  st.error("❌ သင့်၏ အခမဲ့ ၅ ကြိမ် အသုံးပြုခွင့် ကုန်ဆုံးသွားပါပြီ။")
-  st.warning("ဆက်လက်အသုံးပြုလိုပါက Telegram **@lynn_m2026** ထံသို့ ဆက်သွယ်ပါ။")
-  st.stop()
-
-# ---------------------------------------------------------
-# 🎬 MAIN APP LOGIC
-# ---------------------------------------------------------
-video_url = st.text_input("🔗 YouTube Video URL ကို ရိုက်ထည့်ပါ:", "")
-
+# YouTube URL ထည့်ရန် Input Box
+url = st.text_input("YouTube Video URL ကို ထည့်ပါ:", placeholder="https://www.youtube.com/watch?v=...")
 
 def extract_video_id(url):
-  match = re.search(r"(?:v=|\/)([0-9A-Za-z_-]{11})", url)
-  return match.group(1) if match else None
+    """YouTube URL မှ Video ID ကို ဖြတ်ထုတ်ပေးသော function"""
+    if "youtu.be/" in url:
+        return url.split("youtu.be/")[1].split("?")[0]
+    elif "watch?v=" in url:
+        return url.split("watch?v=")[1].split("&")[0]
+    return None
 
-
-if st.button("⚡ မြန်မာစာ Script ထုတ်မည်", type="primary"):
-  active_key = user_api_key.strip() if user_api_key else secret_api_key
-  if not active_key:
-    st.warning(
-        "⚠️ ကျေးဇူးပြု၍ Sidebar တွင် Google Gemini API Key ထည့်ပေးပါ (သို့မဟုတ်"
-        " Secrets တွင် သတ်မှတ်ပေးပါ)။"
-    )
-  elif video_url:
-    video_id = extract_video_id(video_url)
-    if not video_id:
-      st.error("❌ YouTube Link မမှန်ပါ။ ပြန်စစ်ပေးပါ။")
+if st.button("🚀 စာသားနှင့် အသံထုတ်ယူမည်"):
+    if not url:
+        st.warning("ကျေးဇူးပြု၍ YouTube လင့်ခ်တစ်ခု ထည့်ပါ။")
     else:
-      try:
-        st.video(video_url)
-        full_myanmar_script = ""
-
-        with st.spinner(
-            "⏳ YouTube Transcript ဆွဲထုတ်နေပြီး Gemini AI ဖြင့်"
-            " မြန်မာလိုဘာသာပြန်နေပါပြီ..."
-        ):
-          # Universal compatibility method for fetching transcript safely
-          transcript_items = None
-          try:
-            # Try old/direct static method first
-            transcript_items = YouTubeTranscriptApi.get_transcript(video_id)
-          except Exception:
-            try:
-              # Try instance fetch method as fallback
-              ytt_api = YouTubeTranscriptApi()
-              transcript_items = ytt_api.fetch(video_id)
-            except Exception as sub_err:
-              st.error(f"Transcript ထုတ်ယူ၍မရပါ: {str(sub_err)}")
-
-          if transcript_items:
-            genai.configure(api_key=active_key)
-            model = genai.GenerativeModel("gemini-1.5-flash")
-
-            chunk_size = 60
-            for i in range(0, len(transcript_items), chunk_size):
-              chunk = transcript_items[i : i + chunk_size]
-              chunk_text = ""
-              for item in chunk:
-                # Safe handling whether item is dictionary or object
+        video_id = extract_video_id(url)
+        if not video_id:
+            st.error("❌ မှန်ကန်သော YouTube လင့်ခ် မဟုတ်ပါ။")
+        else:
+            with st.spinner("⏳ ဗီဒီယိုမှ အချက်အလက်များ ဆွဲထုတ်နေပါပြီ၊ ခဏစောင့်ပါ..."):
                 try:
-                  if isinstance(item, dict):
-                    start_time = int(item.get("start", 0))
-                    text_val = str(item.get("text", ""))
-                  else:
-                    start_time = int(getattr(item, "start", 0))
-                    text_val = str(getattr(item, "text", ""))
-                except Exception:
-                  start_time = 0
-                  text_val = str(item)
+                    # ၁။ YouTube Transcript ဆွဲထုတ်ခြင်း
+                    transcript_list = YouTubeTranscriptApi.get_transcript(video_id, languages=['my', 'en'])
+                    full_text = " ".join([entry['text'] for entry in transcript_list])
+                    
+                    # ၂။ Website ပေါ်တွင် စာသားပြသခြင်း
+                    st.success("အောင်မြင်စွာ ထုတ်ယူပြီးပါပြီ!")
+                    
+                    st.subheader("📝 Transcript စာသားများ")
+                    st.text_area("Transcript Text", full_text, height=200)
+                    
+                    # စာသားကို ဖိုင်အဖြစ် Download ဆွဲရန် Button
+                    st.download_button(
+                        label="📥 Transcript ကို Text ဖိုင်ဖြင့် Download ဆွဲရန်",
+                        data=full_text,
+                        file_name=f"{video_id}_transcript.txt",
+                        mime="text/plain"
+                    )
 
-                minutes = start_time // 60
-                seconds = start_time % 60
-                time_str = f"[{minutes:02d}:{seconds:02d}]"
-                chunk_text += f"{time_str} {text_val.strip()}\n"
+                    # ၃။ မြန်မာအသံဖိုင် (Audio) သို့ ပြောင်းလဲခြင်း
+                    st.subheader("🎙️ မြန်မာအသံဖိုင် (Voiceover)")
+                    audio_path = f"{video_id}.mp3"
+                    
+                    # စာသားရှည်ပါက gTTS အတွက် အတိုချုပ် (သို့) အပိုင်းလိုက်သုံးနိုင်သည်
+                    tts_text = full_text[:1000] 
+                    tts = gTTS(text=tts_text, lang='my', slow=False)
+                    tts.save(audio_path)
 
-              prompt = (
-                  "You are an expert translator and content creator. Below is a"
-                  " segment of a YouTube video transcript with timestamps."
-                  " Translate the spoken text line-by-line into natural, fluent,"
-                  " spoken-style Myanmar (Burmese) language so the user can"
-                  " easily read and record their own voiceover just like the"
-                  " original video. Keep the timestamps like [00:15] intact so"
-                  " the timing matches.\n\nSegment:\n"
-                  f"{chunk_text}"
-              )
+                    # အသံဖိုင်ကို နားထောင်ရန်နှင့် Download ဆွဲရန် ပြသခြင်း
+                    st.audio(audio_path, format='audio/mp3')
+                    
+                    with open(audio_path, "rb") as audio_file:
+                        st.download_button(
+                            label="📥 မြန်မာအသံဖိုင်ကို MP3 ဖြင့် Download ဆွဲရန်",
+                            data=audio_file,
+                            file_name=f"{video_id}_audio.mp3",
+                            mime="audio/mp3"
+                        )
+                    
+                    # အသုံးပြုပြီး ဖိုင်ကို ဖျက်ပစ်ရန်
+                    if os.path.exists(audio_path):
+                        os.remove(audio_path)
 
-              response = model.generate_content(prompt)
-              if response and response.text:
-                full_myanmar_script += response.text.strip() + "\n"
-
-            if full_myanmar_script:
-              st.success("👑 မြန်မာစာ Script အောင်မြင်စွာ ထွက်ရှိလာပါပြီ!")
-
-              if not is_vip:
-                increment_user_usage(clean_email)
-
-              st.markdown("---")
-              st.subheader("📝 မြန်မာစာ Script (Voiceover ဖတ်ရန်)")
-              st.code(full_myanmar_script, height=500)
-              st.download_button(
-                  "📥 Download မြန်မာ Script (.txt)",
-                  data=full_myanmar_script.encode("utf-8-sig"),
-                  file_name="youtube_myanmar_script.txt",
-                  mime="text/plain; charset=utf-8",
-              )
-            else:
-              st.error("❌ ဘာသာပြန်ဆိုမှု အထွက် မရှိပါ။")
-          else:
-            st.error(
-                "❌ ဤဗီဒီယိုတွင် Transcript (စာတန်းထိုး) ရယူ၍မရပါ သို့မဟုတ်"
-                " ပိတ်ထားခြင်း ဖြစ်နိုင်ပါသည်။"
-            )
-
-      except Exception as e:
-        st.error(f"❌ အမှားအယွင်း ဖြစ်ပေါ်သွားပါသည်: {str(e)}")
-  else:
-    st.warning("⚠️ ကျေးဇူးပြု၍ YouTube Video Link ကို ရိုက်ထည့်ပေးပါ။")
+                except Exception as e:
+                    st.error(f"❌ အမှားအယွင်း ဖြစ်ပေါ်သွားပါသည်: {str(e)}")
+                    
