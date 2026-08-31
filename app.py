@@ -1,170 +1,93 @@
-import streamlit as st
-import sqlite3
 import os
-from youtube_transcript_api import YouTubeTranscriptApi
+import streamlit as st
+from moviepy.editor import VideoFileClip
+from google import genai
 from gtts import gTTS
 
-# --- PAGE CONFIG & STYLING ---
-st.set_page_config(page_title="Youtube to Transcribe", page_icon="📝", layout="centered")
+# Streamlit Page Config
+st.set_page_config(page_title="AI Video Recap & Summary Pro", layout="wide")
+st.title("🎬 AI Video Recap & Summary App")
+st.write("ဗီဒီယိုဖိုင်ကို တင်ပါ၊ AI ဖြင့် အနှစ်ချုပ် ဇာတ်ညွှန်းနှင့် အသံဖိုင်များကို အလိုအလျောက် ဖန်တီးပါ။")
 
-st.markdown("""
-    <style>
-    .main {
-        background-color: #0f1117;
-        color: #ffffff;
-    }
-    .stApp {
-        background-color: #0f1117;
-        color: #ffffff;
-    }
-    h1 {
-        color: #ffffff;
-        text-align: center;
-        font-weight: 800;
-        font-size: 2.2rem;
-    }
-    .subtitle {
-        text-align: center;
-        color: #a0aec0;
-        font-size: 15px;
-        margin-bottom: 25px;
-    }
-    .stButton>button {
-        background: linear-gradient(90deg, #2563eb, #1d4ed8);
-        color: white;
-        font-size: 16px;
-        font-weight: bold;
-        width: 100%;
-        border-radius: 8px;
-        height: 48px;
-        border: none;
-    }
-    .stButton>button:hover {
-        background: linear-gradient(90deg, #1d4ed8, #1e40af);
-        color: white;
-    }
-    </style>
-""", unsafe_allow_html=True)
+# Streamlit Secrets မှ Gemini API Key ကို အလိုအလျောက် ယူသုံးခြင်း
+try:
+    gemini_api_key = st.secrets["GEMINI_API_KEY"]
+    client = genai.Client(api_key=gemini_api_key)
+    
+    # 1. File Uploader
+    uploaded_file = st.file_uploader("ဗီဒီယိုဖိုင်ကို တင်ပါ (MP4, MOV)", type=["mp4", "mov", "avi"])
 
-# --- DATABASE SETUP (Credits & VIP) ---
-def init_db():
-    conn = sqlite3.connect('users.db')
-    c = conn.cursor()
-    c.execute('''
-        CREATE TABLE IF NOT EXISTS users (
-            email TEXT PRIMARY KEY,
-            credits INTEGER DEFAULT 5,
-            is_vip INTEGER DEFAULT 0
-        )
-    ''')
-    conn.commit()
-    conn.close()
-
-init_db()
-
-def get_user_data(email):
-    conn = sqlite3.connect('users.db')
-    c = conn.cursor()
-    c.execute('SELECT credits, is_vip FROM users WHERE email = ?', (email,))
-    user = c.fetchone()
-    if not user:
-        c.execute('INSERT INTO users (email, credits, is_vip) VALUES (?, 5, 0)', (email,))
-        conn.commit()
-        user = (5, 0)
-    conn.close()
-    return user
-
-def update_credits(email, credits):
-    conn = sqlite3.connect('users.db')
-    c = conn.cursor()
-    c.execute('UPDATE users SET credits = ? WHERE email = ?', (credits, email))
-    conn.commit()
-    conn.close()
-
-# --- UI HEADER ---
-st.markdown("<br>", unsafe_allow_html=True)
-st.markdown("<h1>Youtube Transcript & Myanmar Audio Generator</h1>", unsafe_allow_html=True)
-st.markdown("<div class='subtitle'>YouTube ဗီဒီယိုလင့်ခ် (Link) ထည့်ရုံဖြင့် စာသား (Transcript) ထုတ်ယူပြီး မြန်မာအသံဖိုင်ပါ တစ်ခါတည်း ဖန်တီးနိုင်ပါပြီ။</div>", unsafe_allow_html=True)
-st.markdown("---")
-
-# --- SIDEBAR (Account & VIP) ---
-st.sidebar.title("👤 အကောင့်အချက်အလက်")
-user_email = st.sidebar.text_input("သင့်ရဲ့ Gmail လိပ်စာကို ထည့်ပါ:")
-
-if user_email:
-    credits, is_vip = get_user_data(user_email)
-    st.sidebar.write(f"**Email:** {user_email}")
-    if is_vip:
-        st.sidebar.success("🌟 VIP အဖွဲ့ဝင် (အကန့်အသတ်မရှိ)")
-    else:
-        st.sidebar.info(f"🎁 ကျန်ရှိသော Free အကြိမ်ရေ: **{credits} / 5**")
-        st.sidebar.markdown("---")
-        st.sidebar.subheader("💎 VIP သို့ ပြောင်းရန်")
-        st.sidebar.write("ဈေးနှုန်းနှင့် ဝယ်ယူရန် ဆက်သွယ်ရန်:")
-        st.sidebar.markdown("👉 Telegram: **@lynn_m2026**")
-
-# --- MAIN FORM ---
-with st.form("transcript_form"):
-    url = st.text_input("YouTube Video URL ကို ထည့်ပါ:", placeholder="https://www.youtube.com/watch?v=...")
-    submitted = st.form_submit_button("🚀 စာသားနှင့် အသံထုတ်ယူမည်")
-
-def extract_video_id(url):
-    if "youtu.be/" in url:
-        return url.split("youtu.be/")[1].split("?")[0]
-    elif "watch?v=" in url:
-        return url.split("watch?v=")[1].split("&")[0]
-    return None
-
-if submitted:
-    if not user_email:
-        st.warning("⚠️ ကျေးဇူးပြု၍ ဘယ်ဘက် Sidebar (သို့မဟုတ် အောက်တွင်) တွင် Gmail ထည့်ပါ။")
-    elif not url:
-        st.warning("⚠️ ကျေးဇူးပြု၍ YouTube လင့်ခ် ထည့်ပါ။")
-    else:
-        credits, is_vip = get_user_data(user_email)
+    if uploaded_file is not None:
+        # ဗီဒီယိုဖိုင်ကို ယာယီသိမ်းဆည်းခြင်း
+        input_video_path = "temp_input_video.mp4"
+        with open(input_video_path, "wb") as f:
+            f.write(uploaded_file.getbuffer())
         
-        if not is_vip and credits <= 0:
-            st.error("❌ Free Quota (၅ ကြိမ်) ကုန်ဆုံးသွားပါပြီ။ VIP ဝင်ရန် @lynn_m2026 သို့ ဆက်သွယ်ပါ။")
-        else:
-            video_id = extract_video_id(url)
-            if not video_id:
-                st.error("❌ မှန်ကန်သော YouTube လင့်ခ် မဟုတ်ပါ။")
-            else:
-                with st.spinner("⏳ စာသားများကို ထုတ်ယူနေပါပြီ၊ ခဏစောင့်ပါ..."):
-                    try:
-                        # YouTube Transcript API ဖြင့် စာသားရယူခြင်း
-                        fetched_data = YouTubeTranscriptApi.get_transcript(video_id)
-                        full_text = " ".join([entry['text'] for entry in fetched_data])
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            st.subheader("📺 မူရင်းဗီဒီယို")
+            st.video(input_video_path)
+            
+        with col2:
+            st.subheader("⚙️ ဆက်တင်များ")
+            recap_style = st.selectbox(
+                "အနှစ်ချုပ်ပုံစံ ရွေးပါ",
+                ["စိတ်လှုပ်ရှားစရာ (Exciting & Dramatic)", "အတိုချုပ် (Short Summary)", "ဟာသဆန်ဆန် (Funny)"]
+            )
+            
+            if st.button("🚀 အပြည့်အစုံ စတင်ဖန်တီးမည်"):
+                try:
+                    with st.status("🔄 လုပ်ဆောင်ချက်များ ဆောင်ရွက်နေပါပြီ...", expanded=True) as status:
                         
-                        st.success("✨ အောင်မြင်စွာ ထုတ်ယူပြီးပါပြီ!")
-                        st.subheader("📝 Transcript စာသားများ")
-                        st.text_area("Transcript Text", full_text, height=150)
+                        # Step 1: Extract Audio from Video
+                        st.write("🔊 ဗီဒီယိုထဲမှ အသံ (Audio) ကို ထုတ်ယူနေပါပြီ...")
+                        audio_path = "temp_extracted_audio.mp3"
+                        video_clip = VideoFileClip(input_video_path)
+                        video_clip.audio.write_audiofile(audio_path, logger=None)
+                        video_clip.close()
                         
-                        # gTTS ဖြင့် မြန်မာအသံဖိုင် ဖန်တီးခြင်း
-                        audio_path = f"{video_id}.mp3"
-                        tts = gTTS(text=full_text[:1000], lang='my', slow=False)
-                        tts.save(audio_path)
+                        # Step 2: Gemini AI Upload & Generate
+                        st.write("🤖 Gemini AI ဖြင့် ဇာတ်လမ်းအနှစ်ချုပ် ဇာတ်ညွှန်း ရေးသားနေပါပြီ...")
+                        audio_file_gemini = client.files.upload(file=audio_path)
+                        
+                        prompt = f"""
+                        You are a professional video recap creator. 
+                        Listen to this audio/video context and create an engaging video recap script in the style of '{recap_style}'. 
+                        Make it catchy, fast-paced, and engaging for social media viewers.
+                        """
+                        
+                        response = client.models.generate_content(
+                            model='gemini-2.5-flash',
+                            contents=[audio_file_gemini, prompt]
+                        )
+                        final_script = response.text
+                        
+                        # Step 3: Text to Speech (Voiceover)
+                        st.write("🎙️ အသံဖိုင်အသစ် (Voiceover) ဖန်တီးနေပါပြီ...")
+                        tts = gTTS(text=final_script[:1500], lang='en', slow=False)
+                        voiceover_path = "temp_voiceover.mp3"
+                        tts.save(voiceover_path)
+                        
+                        status.update(label="✨ အားလုံး အောင်မြင်စွာ ပြီးစီးပါပြီ!", state="complete", expanded=False)
+                    
+                    # Results Display Section
+                    st.success("🎉 AI Video Recap ထွက်ရှိလာပါပြီ!")
+                    st.subheader("📄 ထွက်လာသည့် အနှစ်ချုပ် ဇာတ်ညွှန်း (Script)")
+                    st.text_area("Script:", final_script, height=200)
+                    
+                    st.subheader("🎧 ထွက်လာသည့် AI Voiceover အသံဖိုင်")
+                    st.audio(voiceover_path)
+                    
+                except Exception as e:
+                    st.error(f"မှားယွင်းမှု ဖြစ်ပေါ်သွားပါပြီ: {e}")
+                
+                finally:
+                    if os.path.exists(input_video_path):
+                        os.remove(input_video_path)
+                    if os.path.exists("temp_extracted_audio.mp3"):
+                        os.remove("temp_extracted_audio.mp3")
 
-                        st.subheader("🔊 အသံဖိုင် (Audio Preview)")
-                        st.audio(audio_path, format='audio/mp3')
-                        
-                        with open(audio_path, "rb") as audio_file:
-                            st.download_button(
-                                label="📥 မြန်မာအသံဖိုင်ကို MP3 ဖြင့် Download ဆွဲရန်",
-                                data=audio_file,
-                                file_name=f"{video_id}_audio.mp3",
-                                mime="audio/mp3"
-                            )
-                        
-                        if os.path.exists(audio_path):
-                            os.remove(audio_path)
-
-                        # Credit လျှော့ချခြင်း
-                        if not is_vip:
-                            new_credits = credits - 1
-                            update_credits(user_email, new_credits)
-                            st.info(f"ကျန်ရှိသည့် Free အကြိမ်ရေ: {new_credits} ကြိမ်")
-
-                    except Exception as e:
-                        st.error(f"❌ အမှားအယွင်း ဖြစ်ပေါ်သွားပါသည်: (ဒီဗီဒီယိုတွင် Subtitle ပိတ်ထားခြင်း သို့မဟုတ် လင့်ခ်အမှား ဖြစ်နိုင်ပါသည်) - {str(e)}")
-                            
+except Exception as e:
+    st.error("⚠️ Streamlit Secrets တွင် GEMINI_API_KEY ထည့်သွင်းထားခြင်း မရှိသေးပါ။ App ဆက်တင်ကို စစ်ဆေးပါ။")
+    
