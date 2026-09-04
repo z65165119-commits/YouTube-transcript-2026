@@ -1,210 +1,426 @@
-import streamlit as st
-import sqlite3
+from datetime import datetime
+import io
+import json
 import os
 import re
-import urllib.request
-import json
+import time
 from gtts import gTTS
+import requests
+import streamlit as st
+import yt_dlp
+from youtube_transcript_api import YouTubeTranscriptApi
 
-# --- PAGE CONFIG & STYLING ---
-st.set_page_config(page_title="Youtube to Transcribe", page_icon="📝", layout="centered")
+st.set_page_config(
+    page_title="YouTube AI Studio & Script Suite",
+    page_icon="🔴",
+    layout="wide",
+)
 
-st.markdown("""
-    <style>
-    .main {
-        background-color: #0f1117;
-        color: #ffffff;
-    }
-    .stApp {
-        background-color: #0f1117;
-        color: #ffffff;
-    }
-    h1 {
-        color: #ffffff;
-        text-align: center;
-        font-weight: 800;
-        font-size: 2.2rem;
-    }
-    .subtitle {
-        text-align: center;
-        color: #a0aec0;
-        font-size: 15px;
-        margin-bottom: 25px;
-    }
-    .stButton>button {
-        background: linear-gradient(90deg, #2563eb, #1d4ed8);
-        color: white;
-        font-size: 16px;
-        font-weight: bold;
-        width: 100%;
-        border-radius: 8px;
-        height: 48px;
-        border: none;
-    }
-    .stButton>button:hover {
-        background: linear-gradient(90deg, #1d4ed8, #1e40af);
-        color: white;
-    }
-    </style>
-""", unsafe_allow_html=True)
+# ---------------------------------------------------------
+# 🗄️ JSON DATABASE FUNCTIONS FOR PERSISTENT USAGE TRACKING
+# ---------------------------------------------------------
+DB_FILE = "usage_db.json"
 
-# --- DATABASE SETUP ---
-def init_db():
-    conn = sqlite3.connect('users.db')
-    c = conn.cursor()
-    c.execute('''
-        CREATE TABLE IF NOT EXISTS users (
-            email TEXT PRIMARY KEY,
-            credits INTEGER DEFAULT 5,
-            is_vip INTEGER DEFAULT 0
-        )
-    ''')
-    conn.commit()
-    conn.close()
 
-init_db()
+def load_db():
+  if os.path.exists(DB_FILE):
+    try:
+      with open(DB_FILE, "r", encoding="utf-8") as f:
+        return json.load(f)
+    except Exception:
+      return {}
+  return {}
 
-def get_user_data(email):
-    conn = sqlite3.connect('users.db')
-    c = conn.cursor()
-    c.execute('SELECT credits, is_vip FROM users WHERE email = ?', (email,))
-    user = c.fetchone()
-    if not user:
-        c.execute('INSERT INTO users (email, credits, is_vip) VALUES (?, 5, 0)', (email,))
-        conn.commit()
-        user = (5, 0)
-    conn.close()
-    return user
 
-def update_credits(email, credits):
-    conn = sqlite3.connect('users.db')
-    c = conn.cursor()
-    c.execute('UPDATE users SET credits = ? WHERE email = ?', (credits, email))
-    conn.commit()
-    conn.close()
+def save_db(db):
+  with open(DB_FILE, "w", encoding="utf-8") as f:
+    json.dump(db, f, ensure_ascii=False, indent=4)
 
-# --- UI HEADER ---
-st.markdown("<br>", unsafe_allow_html=True)
-st.markdown("<h1>YouTube Transcript & English Audio Generator</h1>", unsafe_allow_html=True)
-st.markdown("<div class='subtitle'>YouTube ဗီဒီယိုလင့်ခ်ထည့်ရုံဖြင့် အင်္ဂလိပ်စာသား (Transcript) နှင့် အသံဖိုင်ပါ တစ်ခါတည်း ထုတ်ယူနိုင်ပါပြီ။</div>", unsafe_allow_html=True)
-st.markdown("---")
 
-# --- SIDEBAR ---
-st.sidebar.title("👤 အကောင့်အချက်အလက်")
-user_email = st.sidebar.text_input("သင့်ရဲ့ Gmail လိပ်စာကို ထည့်ပါ:")
+def get_user_usage(email):
+  db = load_db()
+  clean_email = email.strip().lower()
+  if clean_email not in db:
+    db[clean_email] = {"count": 0, "first_used": str(datetime.now())}
+    save_db(db)
+  return db[clean_email]["count"]
 
-if user_email:
-    credits, is_vip = get_user_data(user_email)
-    st.sidebar.write(f"**Email:** {user_email}")
-    if is_vip:
-        st.sidebar.success("🌟 VIP အဖွဲ့ဝင် (အကန့်အသတ်မရှိ)")
-    else:
-        st.sidebar.info(f"🎁 ကျန်ရှိသော Free အကြိမ်ရေ: **{credits} / 5**")
-        st.sidebar.markdown("---")
-        st.sidebar.subheader("💎 VIP သို့ ပြောင်းရန်")
-        st.sidebar.write("ဈေးနှုန်းနှင့် ဝယ်ယူရန် ဆက်သွယ်ရန်:")
-        st.sidebar.markdown("👉 Telegram: **@lynn_m2026**")
 
-# --- MAIN FORM ---
-with st.form("transcript_form"):
-    url = st.text_input("YouTube Video URL ကို ထည့်ပါ:", placeholder="https://www.youtube.com/watch?v=...")
-    submitted = st.form_submit_button("🚀 Get English Transcript & Audio")
+def increment_user_usage(email):
+  db = load_db()
+  clean_email = email.strip().lower()
+  if clean_email not in db:
+    db[clean_email] = {"count": 1, "first_used": str(datetime.now())}
+  else:
+    db[clean_email]["count"] += 1
+  save_db(db)
+
+
+# ---------------------------------------------------------
+# 🔑 LOGIN SESSION MANAGEMENT
+# ---------------------------------------------------------
+ALLOWED_EMAILS = [
+    "soemoe@gmail.com",
+    "customer1@gmail.com",
+    "zlynn7368@gmail.com",
+]
+
+FREE_LIMIT = 5
+
+if "logged_in" not in st.session_state:
+  st.session_state["logged_in"] = False
+  st.session_state["user_email"] = ""
+
+# ---------------------------------------------------------
+# 🔝 HEADER BAR WITH SIGN IN / USER INFO
+# ---------------------------------------------------------
+col_title, col_auth = st.columns([3, 1])
+
+with col_title:
+  st.title("🔴⚡ YouTube AI Studio")
+
+with col_auth:
+  if st.session_state["logged_in"]:
+    st.write(f"👋 **{st.session_state['user_email']}**")
+    if st.button("Sign Out", key="signout_btn"):
+      st.session_state["logged_in"] = False
+      st.session_state["user_email"] = ""
+      st.rerun()
+
+# ---------------------------------------------------------
+# 🚨 MANDATORY LOGIN CHECK
+# ---------------------------------------------------------
+if not st.session_state["logged_in"]:
+  st.markdown("---")
+  st.warning("⚠️ App အသုံးပြုရန် သင့်၏ Gmail (သို့) Email ဖြင့် အရင် ဝင်ရောက်ပါ။")
+
+  with st.form("login_form"):
+    input_email = st.text_input("📧 Your Gmail Address:")
+    submit_login = st.form_submit_button("Sign In / ဝင်မည်", type="primary")
+
+    if submit_login:
+      if input_email and "@" in input_email:
+        st.session_state["logged_in"] = True
+        st.session_state["user_email"] = input_email.strip().lower()
+        st.success("✅ အောင်မြင်စွာ ဝင်ရောက်ပြီးပါပြီ!")
+        st.rerun()
+      else:
+        st.error("❌ ကျေးဇူးပြု၍ မှန်ကန်သော Email လိပ်စာ ထည့်ပါ။")
+
+  st.stop()
+
+clean_email = st.session_state["user_email"]
+allowed_emails_lower = [e.strip().lower() for e in ALLOWED_EMAILS]
+is_vip = clean_email in allowed_emails_lower
+current_usage = get_user_usage(clean_email)
+
+# ---------------------------------------------------------
+# ⚙️ SIDEBAR - USER ACCOUNT & OPTIONS
+# ---------------------------------------------------------
+st.sidebar.header("👤 Account Info")
+st.sidebar.write(f"**Logged in as:**\n{clean_email}")
+
+if is_vip:
+  st.sidebar.success("👑 **VIP Unlimited Access**")
+else:
+  remaining = max(0, FREE_LIMIT - current_usage)
+  st.sidebar.info(f"🎁 အခမဲ့ သုံးစွဲခွင့် ကျန်ရှိသည့်အကြိမ်: {remaining} / {FREE_LIMIT}")
+  st.sidebar.markdown(
+      "💬 **VIP ဝယ်ယူရန် ဆက်သွယ်ရန်:**\nTelegram: [@lynn_m2026](https://t.me/lynn_m2026)"
+  )
+
+st.sidebar.markdown("---")
+st.sidebar.header("⚙️ Options")
+show_timestamp = st.sidebar.checkbox("Timestamps ထည့်ရန်", value=False)
+summary_length = st.sidebar.select_slider(
+    "AI Summary အတိုအရှည်",
+    options=["Short", "Medium", "Detailed"],
+    value="Medium",
+)
+
+# 🛑 Non-VIP တွေအတွက် ၅ ကြိမ်ပြည့်ရင် ရပ်တန့်မည့် စနစ်
+if not is_vip and current_usage >= FREE_LIMIT:
+  st.error("❌ သင့်၏ အခမဲ့ ၅ ကြိမ် အသုံးပြုခွင့် ကုန်ဆုံးသွားပါပြီ။")
+  st.warning(
+      "ဆက်လက်အသုံးပြုလိုပါက Telegram **@lynn_m2026** ထံသို့ ဆက်သွယ်၍ **VIP"
+      " Access** ရယူပါရန်။"
+  )
+  st.stop()
+
+# ---------------------------------------------------------
+# 🎬 MAIN APP LOGIC
+# ---------------------------------------------------------
+video_url = st.text_input("🔗 YouTube Video URL ကို ရိုက်ထည့်ပါ:", "")
+
 
 def extract_video_id(url):
-    if "youtu.be/" in url:
-        return url.split("youtu.be/")[1].split("?")[0]
-    elif "watch?v=" in url:
-        return url.split("watch?v=")[1].split("&")[0]
-    return None
+  match = re.search(r"(?:v=|\/)([0-9A-Za-z_-]{11})", url)
+  return match.group(1) if match else None
 
-# Fallback Transcript Fetcher using standard libraries to avoid blockages
-def get_fallback_transcript(video_id):
+
+def format_time(seconds):
+  minutes = int(seconds // 60)
+  secs = int(seconds % 60)
+  return f"{minutes:02d}:{secs:02d}"
+
+
+def format_srt_time(seconds):
+  hrs = int(seconds // 3600)
+  mins = int((seconds % 3600) // 60)
+  secs = int(seconds % 60)
+  millis = int((seconds % 1) * 1000)
+  return f"{hrs:02d}:{mins:02d}:{secs:02d},{millis:03d}"
+
+
+def generate_srt(transcript_data):
+  srt_output = ""
+  for idx, item in enumerate(transcript_data, 1):
+    start = format_srt_time(item["start"])
+    end = format_srt_time(item["start"] + item["duration"])
+    text = item["text"].strip()
+    srt_output += f"{idx}\n{start} --> {end}\n{text}\n\n"
+  return srt_output
+
+
+def translate_mymemory(text):
+  """MyMemory Translation API ကို အသုံးပြု၍ မြန်မာလို အမှန်တကယ် ဘာသာပြန်ခြင်း"""
+  if not text.strip():
+    return ""
+
+  # API က စာသားအရှည် အများကြီးဆိုရင် ကန့်သတ်ချက်ရှိ므로 ၄၅၀ စာလုံးစီ အပိုင်းခွဲမည်
+  max_len = 450
+  sentences = [
+      text[i : i + max_len] for i in range(0, len(text), max_len)
+  ]
+  translated_chunks = []
+
+  for part in sentences:
     try:
-        html_url = f"https://www.youtube.com/watch?v={video_id}"
-        req = urllib.request.Request(html_url, headers={'User-Agent': 'Mozilla/5.0'})
-        html = urllib.request.urlopen(req).read().decode('utf-8')
-        
-        # Caption tracks ရှာဖွေခြင်း
-        captions_match = re.search(r'"captionTracks":\s*(\[.*?\])', html)
-        if not captions_match:
-            return None
-        
-        tracks = json.loads(captions_match.group(1))
-        en_track = None
-        for track in tracks:
-            if 'en' in track.get('languageCode', ''):
-                en_track = track
-                break
-        
-        if not en_track and tracks:
-            en_track = tracks[0] # အင်္ဂလိပ်မရှိရင် ပထမဆုံးရတာကို ယူမယ်
-            
-        if en_track and 'baseUrl' in en_track:
-            sub_url = en_track['baseUrl']
-            sub_req = urllib.request.Request(sub_url, headers={'User-Agent': 'Mozilla/5.0'})
-            sub_xml = urllib.request.urlopen(sub_req).read().decode('utf-8')
-            
-            # XML ထဲက စာသားများကို ဖြုတ်ထုတ်ခြင်း
-            text_matches = re.findall(r'<text[^>]*>(.*?)</text>', sub_xml)
-            clean_texts = []
-            for t in text_matches:
-                # HTML entities များကို ရှင်းလင်းရန်
-                clean_t = re.sub(r'<.*?>', '', t)
-                clean_t = clean_t.replace('&amp;', '&').replace('&quot;', '"').replace('&#39;', "'")
-                clean_texts.append(clean_t)
-            
-            return " ".join(clean_texts)
-    except Exception as e:
-        print(e)
-    return None
-
-if submitted:
-    if not user_email:
-        st.warning("⚠️ ကျေးဇူးပြု၍ ဘယ်ဘက် Sidebar တွင် Gmail ထည့်ပါ။")
-    elif not url:
-        st.warning("⚠️ ကျေးဇူးပြု၍ YouTube လင့်ခ် ထည့်ပါ။")
-    else:
-        credits, is_vip = get_user_data(user_email)
-        
-        if not is_vip and credits <= 0:
-            st.error("❌ Free Quota (၅ ကြိမ်) ကုန်ဆုံးသွားပါပြီ။ VIP ဝင်ရန် @lynn_m2026 သို့ ဆက်သွယ်ပါ။")
+      url = "https://api.mymemory.translated.net/get"
+      params = {"q": part, "langpair": "en|my"}
+      response = requests.get(url, params=params, timeout=10)
+      if response.status_code == 200:
+        data = response.json()
+        translated_text = data.get("responseData", {}).get(
+            "translatedText", ""
+        )
+        if translated_text and "MYMEMORY WARNING" not in translated_text:
+          translated_chunks.append(translated_text)
         else:
-            video_id = extract_video_id(url)
-            if not video_id:
-                st.error("❌ မှန်ကန်သော YouTube လင့်ခ် မဟုတ်ပါ။")
+          translated_chunks.append(part)
+      else:
+        translated_chunks.append(part)
+    except Exception:
+      translated_chunks.append(part)
+    time.sleep(0.3)  # API ကို တောင်းဆိုချိန် ညှိရန်
+
+  return " ".join(translated_chunks)
+
+
+def fetch_transcript_robust(v_url, v_id):
+  try:
+    tx = YouTubeTranscriptApi.get_transcript(
+        v_id, languages=["en", "en-US", "my", "auto"]
+    )
+    if tx:
+      return tx
+  except Exception:
+    pass
+
+  ydl_opts = {
+      "skip_download": True,
+      "writesubtitles": True,
+      "writeautomaticsub": True,
+      "subtitleslangs": ["en", "my", "en-US"],
+      "quiet": True,
+  }
+
+  try:
+    with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+      info = ydl.extract_info(v_url, download=False)
+      subtitles = info.get("subtitles") or info.get("automatic_captions")
+
+      if subtitles:
+        lang = None
+        for l in ["en", "en-US", "my"]:
+          if l in subtitles:
+            lang = l
+            break
+        if not lang:
+          lang = list(subtitles.keys())[0]
+
+        sub_data = subtitles[lang]
+        json_url = next(
+            (
+                s["url"]
+                for s in sub_data
+                if s.get("ext") == "json3" or "json" in s.get("ext", "")
+            ),
+            None,
+        )
+        if json_url:
+          res = requests.get(json_url, timeout=10).json()
+          parsed_transcript = []
+          for event in res.get("events", []):
+            if "segs" in event:
+              text = "".join(
+                  [s.get("utf8", "") for s in event["segs"]]
+              ).strip()
+              if text and text != "\n":
+                start = event.get("tStartMs", 0) / 1000.0
+                dur = event.get("dDurationMs", 0) / 1000.0
+                parsed_transcript.append(
+                    {"text": text, "start": start, "duration": dur}
+                )
+          if parsed_transcript:
+            return parsed_transcript
+  except Exception:
+    pass
+
+  raise Exception(
+      "ဒီဗီဒီယိုတွင် YouTube Transcript (သို့) Subtitles လုံးဝ မရှိပါ (သို့မဟုတ်"
+      " YouTube မှ တားမြစ်ထားပါသည်)။"
+  )
+
+
+if st.button("⚡ Script & AI Processing စတင်မည်", type="primary"):
+  if video_url:
+    video_id = extract_video_id(video_url)
+    if not video_id:
+      st.error("❌ YouTube Link မမှန်ပါ။ ပြန်စစ်ပေးပါ။")
+    else:
+      try:
+        st.video(video_url)
+
+        with st.spinner("⏳ Transcript နှင့် Data များကို ထုတ်ယူနေပါသည်..."):
+          fetched_transcript = fetch_transcript_robust(video_url, video_id)
+
+          english_lines = []
+          pure_texts = []
+          for item in fetched_transcript:
+            start_str = format_time(item["start"])
+            text = item["text"].strip()
+            clean_t = re.sub(r"^\d+\.?\s*", "", text)
+            if clean_t:
+              pure_texts.append(clean_t)
+
+            if show_timestamp:
+              english_lines.append(f"[{start_str}] {text}")
             else:
-                with st.spinner("⏳ စာသားများကို ထုတ်ယူနေပါပြီ၊ ခဏစောင့်ပါ..."):
-                    full_text = get_fallback_transcript(video_id)
-                    
-                    if full_text:
-                        st.success("✨ အောင်မြင်စွာ ထုတ်ယူပြီးပါပြီ!")
-                        st.subheader("📝 English Transcript Text")
-                        st.text_area("Transcript Text", full_text, height=150)
-                        
-                        # gTTS ဖြင့် အင်္ဂလိပ်အသံဖိုင် ဖန်တီးခြင်း
-                        audio_path = f"{video_id}_en.mp3"
-                        tts = gTTS(text=full_text[:1000], lang='en', slow=False)
-                        tts.save(audio_path)
+              english_lines.append(text)
 
-                        st.subheader("🔊 English Audio Preview")
-                        st.audio(audio_path, format='audio/mp3')
-                        
-                        with open(audio_path, "rb") as audio_file:
-                            st.download_button(
-                                label="📥 Download English MP3 Audio",
-                                data=audio_file,
-                                file_name=f"{video_id}_english.mp3",
-                                mime="audio/mp3"
-                            )
-                        
-                        if os.path.exists(audio_path):
-                            os.remove(audio_path)
+          full_english_script = "\n".join(english_lines)
+          pure_raw_text = " ".join(pure_texts)
 
-                        # Credit လျှော့ချခြင်း
-                        if not is_vip:
-                            new_credits = credits - 1
-                            update_credits(user_email, new_credits)
-                            st.info(f"ကျန်ရှိသည့် Free အကြိမ်ရေ: {new_credits} ကြိမ်")
-                    else:
-                        st.error("❌ ဤဗီဒီယိုတွင် Subtitle မရှိပါ သို့မဟုတ် YouTube ဘက်မှ ကန့်သတ်ထားခြင်း ဖြစ်ပါသည်။ ကျေးဇူးပြု၍ အခြားဗီဒီယိုလင့်ခ် တစ်ခုဖြင့် ထပ်မံကြိုးစားကြည့်ပါ။")
-                        
+          words = len(pure_raw_text.split())
+          chars = len(pure_raw_text)
+          est_read_time = round(words / 150, 1)
+
+        with st.spinner(
+            "⏳ မြန်မာဘာသာသို့ အပိုင်းလိုက် ဘာသာပြန်ဆိုနေပါသည် (ခဏစောင့်ပါ)..."
+        ):
+          myanmar_translation = translate_mymemory(
+              pure_raw_text[: 4000 * 3]
+          )  # အလွန်ရှည်လျှင် ပထမပိုင်းကို ဦးစားပေးမည်
+          srt_content = generate_srt(fetched_transcript)
+
+          sentences = [s.strip() for s in pure_raw_text.split(". ") if s.strip()]
+          summary_count = (
+              3
+              if summary_length == "Short"
+              else (6 if summary_length == "Medium" else 10)
+          )
+          summary_sentences = sentences[:summary_count]
+          summary_en = (
+              ". ".join(summary_sentences) + "."
+              if summary_sentences
+              else pure_raw_text[:300]
+          )
+          summary_my = translate_mymemory(summary_en)
+
+        st.success("✅ အားလုံး အောင်မြင်စွာ မြန်မာဘာသာသို့ ပြန်ဆိုပြီးပါပြီ!")
+
+        # Free User ဖြစ်မှသာ Database ထဲတွင် အကြိမ်ရေ တိုးပေးမည်
+        if not is_vip:
+          increment_user_usage(clean_email)
+
+        m1, m2, m3 = st.columns(3)
+        m1.metric("📝 စာသားလုံးရေ (Words)", f"{words:,}")
+        m2.metric("🔤 အက္ခရာရေ (Chars)", f"{chars:,}")
+        m3.metric("⏱️ ခန့်မှန်းဖတ်ချိန်", f"{est_read_time} မိနစ်")
+
+        st.markdown("---")
+
+        tab1, tab2, tab3, tab4 = st.tabs([
+            "🇬🇧 English Script",
+            "🇲🇲 မြန်မာ ဘာသာပြန်",
+            "🤖 AI Summary & Recap",
+            "📥 Subtitles & TTS Audio",
+        ])
+
+        with tab1:
+          st.subheader("English Script")
+          st.info(
+              "💡 ညာဘက်အပေါ်ထောင့်ရှိ **Copy icon** ကိုနှိပ်၍ တစ်ချက်တည်း"
+              " ကူးယူနိုင်ပါသည်။"
+          )
+          st.code(full_english_script)
+          st.download_button(
+              "📥 Download English Script (.txt)",
+              data=full_english_script.encode("utf-8-sig"),
+              file_name="english_script.txt",
+              mime="text/plain; charset=utf-8",
+          )
+
+        with tab2:
+          st.subheader("မြန်မာ ဘာသာပြန် Script")
+          st.info(
+              "💡 ညာဘက်အပေါ်ထောင့်ရှိ **Copy icon** ကိုနှိပ်၍ တစ်ချက်တည်း"
+              " ကူးယူနိုင်ပါသည်။"
+          )
+          st.code(myanmar_translation)
+          st.download_button(
+              "📥 Download မြန်မာ Script (.txt)",
+              data=myanmar_translation.encode("utf-8-sig"),
+              file_name="myanmar_script.txt",
+              mime="text/plain; charset=utf-8",
+          )
+
+        with tab3:
+          st.subheader("🤖 AI Script Summary & Story Recap")
+          st.write("**English Summary:**")
+          st.code(summary_en)
+          st.write("**မြန်မာအနှစ်ချုပ် / ပြန်လည်ဆန်းသစ်ချက်:**")
+          st.code(summary_my)
+
+        with tab4:
+          st.subheader("🎬 SRT Subtitle & Myanmar Voiceover (TTS)")
+          col_sub, col_audio = st.columns(2)
+
+          with col_sub:
+            st.write("📄 **SRT Subtitle File:**")
+            st.code(srt_content[:2000] + "\n[Truncated Preview]")
+            st.download_button(
+                "📥 Download Subtitle (.srt)",
+                data=srt_content.encode("utf-8-sig"),
+                file_name="subtitle.srt",
+                mime="text/plain; charset=utf-8",
+            )
+
+          with col_audio:
+            st.write("🔊 **Myanmar Text-to-Speech (TTS Voiceover):**")
+            try:
+              tts_text = summary_my[:300]
+              tts = gTTS(text=tts_text, lang="my")
+              audio_fp = io.BytesIO()
+              tts.write_to_fp(audio_fp)
+              audio_fp.seek(0)
+              st.audio(audio_fp, format="audio/mp3")
+            except Exception as e:
+              st.warning(f"Audio TTS Generation မရရှိပါ: {str(e)}")
+
+      except Exception as e:
+        st.error(f"❌ အမှားအယွင်း ဖြစ်ပေါ်သွားပါသည်: {str(e)}")
+  else:
+    st.warning("⚠️ ကျေးဇူးပြု၍ YouTube Link ရိုက်ထည့်ပေးပါ။")
+          
