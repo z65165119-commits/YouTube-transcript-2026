@@ -1,7 +1,9 @@
 import streamlit as st
 import sqlite3
 import os
-from youtube_transcript_api import YouTubeTranscriptApi
+import re
+import urllib.request
+import json
 from gtts import gTTS
 
 # --- PAGE CONFIG & STYLING ---
@@ -115,6 +117,47 @@ def extract_video_id(url):
         return url.split("watch?v=")[1].split("&")[0]
     return None
 
+# Fallback Transcript Fetcher using standard libraries to avoid blockages
+def get_fallback_transcript(video_id):
+    try:
+        html_url = f"https://www.youtube.com/watch?v={video_id}"
+        req = urllib.request.Request(html_url, headers={'User-Agent': 'Mozilla/5.0'})
+        html = urllib.request.urlopen(req).read().decode('utf-8')
+        
+        # Caption tracks ရှာဖွေခြင်း
+        captions_match = re.search(r'"captionTracks":\s*(\[.*?\])', html)
+        if not captions_match:
+            return None
+        
+        tracks = json.loads(captions_match.group(1))
+        en_track = None
+        for track in tracks:
+            if 'en' in track.get('languageCode', ''):
+                en_track = track
+                break
+        
+        if not en_track and tracks:
+            en_track = tracks[0] # အင်္ဂလိပ်မရှိရင် ပထမဆုံးရတာကို ယူမယ်
+            
+        if en_track and 'baseUrl' in en_track:
+            sub_url = en_track['baseUrl']
+            sub_req = urllib.request.Request(sub_url, headers={'User-Agent': 'Mozilla/5.0'})
+            sub_xml = urllib.request.urlopen(sub_req).read().decode('utf-8')
+            
+            # XML ထဲက စာသားများကို ဖြုတ်ထုတ်ခြင်း
+            text_matches = re.findall(r'<text[^>]*>(.*?)</text>', sub_xml)
+            clean_texts = []
+            for t in text_matches:
+                # HTML entities များကို ရှင်းလင်းရန်
+                clean_t = re.sub(r'<.*?>', '', t)
+                clean_t = clean_t.replace('&amp;', '&').replace('&quot;', '"').replace('&#39;', "'")
+                clean_texts.append(clean_t)
+            
+            return " ".join(clean_texts)
+    except Exception as e:
+        print(e)
+    return None
+
 if submitted:
     if not user_email:
         st.warning("⚠️ ကျေးဇူးပြု၍ ဘယ်ဘက် Sidebar တွင် Gmail ထည့်ပါ။")
@@ -131,13 +174,9 @@ if submitted:
                 st.error("❌ မှန်ကန်သော YouTube လင့်ခ် မဟုတ်ပါ။")
             else:
                 with st.spinner("⏳ စာသားများကို ထုတ်ယူနေပါပြီ၊ ခဏစောင့်ပါ..."):
-                    try:
-                        # ဗားရှင်းအသစ်များနှင့် ကိုက်ညီသော Transcript ရယူသည့် နည်းလမ်းအသစ်
-                        api_instance = YouTubeTranscriptApi()
-                        fetched_data = api_instance.fetch(video_id, languages=['en'])
-                        
-                        full_text = " ".join([item.get('text', '') for item in fetched_data])
-                        
+                    full_text = get_fallback_transcript(video_id)
+                    
+                    if full_text:
                         st.success("✨ အောင်မြင်စွာ ထုတ်ယူပြီးပါပြီ!")
                         st.subheader("📝 English Transcript Text")
                         st.text_area("Transcript Text", full_text, height=150)
@@ -166,35 +205,6 @@ if submitted:
                             new_credits = credits - 1
                             update_credits(user_email, new_credits)
                             st.info(f"ကျန်ရှိသည့် Free အကြိမ်ရေ: {new_credits} ကြိမ်")
-
-                    except Exception as e:
-                        try:
-                            # နောက်ထပ် ထပ်မံကြိုးစားရန် (Fallback method)
-                            fetched_data = YouTubeTranscriptApi.get_transcript(video_id)
-                            full_text = " ".join([item['text'] for item in fetched_data])
-                            
-                            st.success("✨ အောင်မြင်စွာ ထုတ်ယူပြီးပါပြီ!")
-                            st.subheader("📝 English Transcript Text")
-                            st.text_area("Transcript Text", full_text, height=150)
-                            
-                            audio_path = f"{video_id}_en.mp3"
-                            tts = gTTS(text=full_text[:1000], lang='en', slow=False)
-                            tts.save(audio_path)
-
-                            st.audio(audio_path, format='audio/mp3')
-                            with open(audio_path, "rb") as audio_file:
-                                st.download_button(
-                                    label="📥 Download English MP3 Audio",
-                                    data=audio_file,
-                                    file_name=f"{video_id}_english.mp3",
-                                    mime="audio/mp3"
-                                )
-                            if os.path.exists(audio_path):
-                                os.remove(audio_path)
-
-                            if not is_vip:
-                                new_credits = credits - 1
-                                update_credits(user_email, new_credits)
-                        except Exception as inner_e:
-                            st.error(f"❌ ဤဗီဒီယိုတွင် Subtitle မရှိပါ သို့မဟုတ် လင့်ခ်အမှား ဖြစ်နေပါသည်။ (Error: {str(inner_e)})")
-    
+                    else:
+                        st.error("❌ ဤဗီဒီယိုတွင် Subtitle မရှိပါ သို့မဟုတ် YouTube ဘက်မှ ကန့်သတ်ထားခြင်း ဖြစ်ပါသည်။ ကျေးဇူးပြု၍ အခြားဗီဒီယိုလင့်ခ် တစ်ခုဖြင့် ထပ်မံကြိုးစားကြည့်ပါ။")
+                        
