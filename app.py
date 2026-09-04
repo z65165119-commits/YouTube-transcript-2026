@@ -132,9 +132,11 @@ if submitted:
             else:
                 with st.spinner("⏳ စာသားများကို ထုတ်ယူနေပါပြီ၊ ခဏစောင့်ပါ..."):
                     try:
-                        # အမှားအယွင်းမရှိစေရန် တိုက်ရိုက်ခေါ်ယူခြင်း (Compatible method)
-                        fetched_data = YouTubeTranscriptApi.get_transcript(video_id, languages=['en'])
-                        full_text = " ".join([entry['text'] for entry in fetched_data])
+                        # ဗားရှင်းအသစ်များနှင့် ကိုက်ညီသော Transcript ရယူသည့် နည်းလမ်းအသစ်
+                        api_instance = YouTubeTranscriptApi()
+                        fetched_data = api_instance.fetch(video_id, languages=['en'])
+                        
+                        full_text = " ".join([item.get('text', '') for item in fetched_data])
                         
                         st.success("✨ အောင်မြင်စွာ ထုတ်ယူပြီးပါပြီ!")
                         st.subheader("📝 English Transcript Text")
@@ -166,5 +168,33 @@ if submitted:
                             st.info(f"ကျန်ရှိသည့် Free အကြိမ်ရေ: {new_credits} ကြိမ်")
 
                     except Exception as e:
-                        st.error(f"❌ ဤဗီဒီယိုတွင် အင်္ဂလိပ် Subtitle မရှိပါ သို့မဟုတ် လင့်ခ်အမှား ဖြစ်နေပါသည်။ (Error: {str(e)})")
-                        
+                        try:
+                            # နောက်ထပ် ထပ်မံကြိုးစားရန် (Fallback method)
+                            fetched_data = YouTubeTranscriptApi.get_transcript(video_id)
+                            full_text = " ".join([item['text'] for item in fetched_data])
+                            
+                            st.success("✨ အောင်မြင်စွာ ထုတ်ယူပြီးပါပြီ!")
+                            st.subheader("📝 English Transcript Text")
+                            st.text_area("Transcript Text", full_text, height=150)
+                            
+                            audio_path = f"{video_id}_en.mp3"
+                            tts = gTTS(text=full_text[:1000], lang='en', slow=False)
+                            tts.save(audio_path)
+
+                            st.audio(audio_path, format='audio/mp3')
+                            with open(audio_path, "rb") as audio_file:
+                                st.download_button(
+                                    label="📥 Download English MP3 Audio",
+                                    data=audio_file,
+                                    file_name=f"{video_id}_english.mp3",
+                                    mime="audio/mp3"
+                                )
+                            if os.path.exists(audio_path):
+                                os.remove(audio_path)
+
+                            if not is_vip:
+                                new_credits = credits - 1
+                                update_credits(user_email, new_credits)
+                        except Exception as inner_e:
+                            st.error(f"❌ ဤဗီဒီယိုတွင် Subtitle မရှိပါ သို့မဟုတ် လင့်ခ်အမှား ဖြစ်နေပါသည်။ (Error: {str(inner_e)})")
+    
