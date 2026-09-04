@@ -1,3 +1,6 @@
-streamlit
-yt-dlp
+streamlit-google-auth
+deep-translator
 gtts
+yt-dlp
+youtube-transcript-api
+requests
