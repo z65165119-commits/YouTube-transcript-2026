@@ -1,7 +1,7 @@
 import streamlit as st
 import sqlite3
 import os
-from youtube_transcript_api import YouTubeTranscriptApi
+from youtube_transcript_api import YouTubeTranscriptApi, TranscriptsDisabled, NoTranscriptFound
 from gtts import gTTS
 
 # --- PAGE CONFIG & STYLING ---
@@ -84,7 +84,7 @@ def update_credits(email, credits):
 # --- UI HEADER ---
 st.markdown("<br>", unsafe_allow_html=True)
 st.markdown("<h1>YouTube Transcript & English Audio Generator</h1>", unsafe_allow_html=True)
-st.markdown("<div class='subtitle'>YouTube ဗီဒီယိုလင့်ခ်ထည့်ရုံဖြင့် အင်္ဂလိပ်စာသား (Transcript) နှင့် အင်္ဂလိပ်အသံဖိုင်ပါ တစ်ခါတည်း ထုတ်ယူနိုင်ပါပြီ။</div>", unsafe_allow_html=True)
+st.markdown("<div class='subtitle'>YouTube ဗီဒီယိုလင့်ခ်ထည့်ရုံဖြင့် အင်္ဂလိပ်စာသား (Transcript) နှင့် အသံဖိုင်ပါ တစ်ခါတည်း ထုတ်ယူနိုင်ပါပြီ။</div>", unsafe_allow_html=True)
 st.markdown("---")
 
 # --- SIDEBAR ---
@@ -132,15 +132,22 @@ if submitted:
             else:
                 with st.spinner("⏳ စာသားများကို ထုတ်ယူနေပါပြီ၊ ခဏစောင့်ပါ..."):
                     try:
-                        # YouTube Transcript API ဖြင့် အင်္ဂလိပ်မူရင်းစာသား ရယူခြင်း
-                        fetched_data = YouTubeTranscriptApi.get_transcript(video_id)
+                        # YouTube Transcript API ဖြင့် အင်္ဂလိပ်စာသား ရယူခြင်း (Error တက်ပါက အခြားဘာသာစကားပါ ရှာဖွေပေးရန် ပြင်ဆင်ထားသည်)
+                        transcript_list = YouTubeTranscriptApi.list_transcripts(video_id)
+                        try:
+                            transcript = transcript_list.find_transcript(['en'])
+                        except:
+                            # အင်္ဂလိပ်မရှိလျှင် ရနိုင်သမျှ transcript တစ်ခုကို ယူမည်
+                            transcript = transcript_list.find_generated_transcript(['en', 'my', 'th', 'es', 'fr', 'de'])
+                        
+                        fetched_data = transcript.fetch()
                         full_text = " ".join([entry['text'] for entry in fetched_data])
                         
                         st.success("✨ အောင်မြင်စွာ ထုတ်ယူပြီးပါပြီ!")
                         st.subheader("📝 English Transcript Text")
                         st.text_area("Transcript Text", full_text, height=150)
                         
-                        # gTTS ဖြင့် အင်္ဂလိပ်အသံဖိုင် (English Audio) ဖန်တီးခြင်း (lang='en')
+                        # gTTS ဖြင့် အင်္ဂလိပ်အသံဖိုင် ဖန်တီးခြင်း
                         audio_path = f"{video_id}_en.mp3"
                         tts = gTTS(text=full_text[:1000], lang='en', slow=False)
                         tts.save(audio_path)
@@ -165,5 +172,10 @@ if submitted:
                             update_credits(user_email, new_credits)
                             st.info(f"ကျန်ရှိသည့် Free အကြိမ်ရေ: {new_credits} ကြိမ်")
 
+                    except TranscriptsDisabled:
+                        st.error("❌ ဤ YouTube ဗီဒီယိုတွင် Subtitle ပိတ်ထားပါသည် (သို့မဟုတ် မရှိပါ။)")
+                    except NoTranscriptFound:
+                        st.error("❌ ဤဗီဒီယိုအတွက် Subtitle ရှမတွေ့ပါ။")
                     except Exception as e:
                         st.error(f"❌ အမှားအယွင်း ဖြစ်ပေါ်သွားပါသည်: {str(e)}")
+                    
