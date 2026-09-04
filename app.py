@@ -1,7 +1,7 @@
 import streamlit as st
 import sqlite3
 import os
-from youtube_transcript_api import YouTubeTranscriptApi, TranscriptsDisabled, NoTranscriptFound
+from youtube_transcript_api import YouTubeTranscriptApi
 from gtts import gTTS
 
 # --- PAGE CONFIG & STYLING ---
@@ -132,15 +132,8 @@ if submitted:
             else:
                 with st.spinner("⏳ စာသားများကို ထုတ်ယူနေပါပြီ၊ ခဏစောင့်ပါ..."):
                     try:
-                        # YouTube Transcript API ဖြင့် အင်္ဂလိပ်စာသား ရယူခြင်း (Error တက်ပါက အခြားဘာသာစကားပါ ရှာဖွေပေးရန် ပြင်ဆင်ထားသည်)
-                        transcript_list = YouTubeTranscriptApi.list_transcripts(video_id)
-                        try:
-                            transcript = transcript_list.find_transcript(['en'])
-                        except:
-                            # အင်္ဂလိပ်မရှိလျှင် ရနိုင်သမျှ transcript တစ်ခုကို ယူမည်
-                            transcript = transcript_list.find_generated_transcript(['en', 'my', 'th', 'es', 'fr', 'de'])
-                        
-                        fetched_data = transcript.fetch()
+                        # အမှားအယွင်းမရှိစေရန် တိုက်ရိုက်ခေါ်ယူခြင်း (Compatible method)
+                        fetched_data = YouTubeTranscriptApi.get_transcript(video_id, languages=['en'])
                         full_text = " ".join([entry['text'] for entry in fetched_data])
                         
                         st.success("✨ အောင်မြင်စွာ ထုတ်ယူပြီးပါပြီ!")
@@ -172,10 +165,6 @@ if submitted:
                             update_credits(user_email, new_credits)
                             st.info(f"ကျန်ရှိသည့် Free အကြိမ်ရေ: {new_credits} ကြိမ်")
 
-                    except TranscriptsDisabled:
-                        st.error("❌ ဤ YouTube ဗီဒီယိုတွင် Subtitle ပိတ်ထားပါသည် (သို့မဟုတ် မရှိပါ။)")
-                    except NoTranscriptFound:
-                        st.error("❌ ဤဗီဒီယိုအတွက် Subtitle ရှမတွေ့ပါ။")
                     except Exception as e:
-                        st.error(f"❌ အမှားအယွင်း ဖြစ်ပေါ်သွားပါသည်: {str(e)}")
-                    
+                        st.error(f"❌ ဤဗီဒီယိုတွင် အင်္ဂလိပ် Subtitle မရှိပါ သို့မဟုတ် လင့်ခ်အမှား ဖြစ်နေပါသည်။ (Error: {str(e)})")
+                        
