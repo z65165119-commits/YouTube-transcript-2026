@@ -61,7 +61,7 @@ def increment_user_usage(email):
 # ---------------------------------------------------------
 ALLOWED_EMAILS = [
     "soemoe@gmail.com",
-    "customer1@gmail.com",
+    "phayphaygyi980@gmail.com",
     "zlynn7368@gmail.com",
 ]
 
