@@ -158,7 +158,6 @@ summary_length = st.sidebar.select_slider(
     value="Medium",
 )
 
-# 🎙️ AI Voice Gender & Tone Settings
 voice_gender = st.sidebar.selectbox(
     "🎙️ AI အသံအမျိုးအစား (Voice Type)",
     [
@@ -170,7 +169,6 @@ voice_gender = st.sidebar.selectbox(
     index=0,
 )
 
-# 🛑 Non-VIP တွေအတွက် ၅ ကြိမ်ပြည့်ရင် ရပ်တန့်မည့် စနစ်
 if not is_vip and current_usage >= FREE_LIMIT:
   st.error("❌ သင့်၏ အခမဲ့ ၅ ကြိမ် အသုံးပြုခွင့် ကုန်ဆုံးသွားပါပြီ။")
   st.warning(
@@ -189,8 +187,8 @@ manual_text_input = st.text_area(
     "📝 (သို့မဟုတ်) RedNote ဗီဒီယိုထဲက တရုတ်စာသားများကို တိုက်ရိုက်ကူးထည့်ရန်:",
     "",
     placeholder=(
-        "ဗီဒီယိုလင့်ခ်မှ စာသားမရပါက ဤနေရာတွင် တရုတ်စာသားများကို"
-        " ကူးထည့်ပေးနိုင်ပါသည်..."
+        "ဗီဒီယိုလင့်ခ်မှ အချက်အလက်ယူ၍မရပါက ဤနေရာတွင် တရုတ်စာသားများကို"
+        " တိုက်ရိုက်ကူးထည့်နိုင်ပါသည်..."
     ),
 )
 
@@ -252,8 +250,31 @@ def translate_mymemory(text):
   return " ".join(translated_chunks)
 
 
+def resolve_short_url(url):
+  """Short Link များကို တိုက်ရိုက် Real URL သို့ ဖော်ထုတ်ပေးခြင်း"""
+  if "xhslink.com" in url or "douyin.com" in url or "v.douyin.com" in url:
+    try:
+      headers = {
+          "User-Agent": (
+              "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
+              " (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+          )
+      }
+      resp = requests.head(url, headers=headers, allow_redirects=True, timeout=5)
+      return resp.url
+    except Exception:
+      try:
+        resp = requests.get(url, headers=headers, timeout=5)
+        return resp.url
+      except Exception:
+        pass
+  return url
+
+
 def fetch_transcript_universal(v_url):
-  video_id_match = re.search(r"(?:v=|\/)([0-9A-Za-z_-]{11})", v_url)
+  resolved_url = resolve_short_url(v_url)
+
+  video_id_match = re.search(r"(?:v=|\/)([0-9A-Za-z_-]{11})", resolved_url)
   if video_id_match:
     try:
       v_id = video_id_match.group(1)
@@ -271,12 +292,19 @@ def fetch_transcript_universal(v_url):
       "writeautomaticsub": True,
       "subtitleslangs": ["zh", "zh-CN", "en", "my"],
       "quiet": True,
+      "geo_bypass": True,
+      "http_headers": {
+          "User-Agent": (
+              "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
+              " (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+          )
+      },
   }
 
   try:
     with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-      info = ydl.extract_info(v_url, download=False)
-      title = info.get("title", "RedNote Video")
+      info = ydl.extract_info(resolved_url, download=False)
+      title = info.get("title", "RedNote / Social Video")
       description = info.get("description", "")
 
       combined_meta = f"{title}. {description}".strip()
@@ -286,24 +314,26 @@ def fetch_transcript_universal(v_url):
             "start": 0.0,
             "duration": info.get("duration", 10.0),
         }]
-  except Exception:
+  except Exception as e:
     pass
 
-  raise Exception(
-      "လင့်ခ်မှ အချက်အလက်ယူ၍မရပါ။ ကျေးဇူးပြု၍ အောက်ပါစာသားထည့်သွင်းရန်"
-      " နေရာတွင် တရုတ်စာသားကို တိုက်ရိုက်ကူးထည့်ပေးပါ။"
-  )
+  # အကယ်၍ အထက်ပါနည်းလမ်းများ မအောင်မြင်ပါက Manual ထည့်ရန် ညွှန်ပြမည့် Fallback Text
+  return [{
+      "text": (
+          "RedNote လင့်ခ်မှ အလိုအလျောက်စာသားဖတ်၍မရပါ။ ကျေးဇူးပြု၍"
+          " အောက်ပါစာသားထည့်သွင်းရန် နေရာတွင် တရုတ်စာသားကို တိုက်ရိုက်ကူးထည့်ပါ။"
+      ),
+      "start": 0.0,
+      "duration": 5.0,
+  }]
 
 
 if st.button("⚡ Script, Voice & Video Processing စတင်မည်", type="primary"):
   if manual_text_input.strip() or video_url:
     try:
-      # Video Download / Streaming Link Extraction via yt-dlp
-      direct_video_stream_url = None
-      if video_url:
-        with yt_dlp.YoutubeDL({"quiet": True, "skip_download": True}) as ydl:
-          info_dict = ydl.extract_info(video_url, download=False)
-          direct_video_stream_url = info_dict.get("url")
+      resolved_target_url = (
+          resolve_short_url(video_url) if video_url else ""
+      )
 
       with st.spinner(
           "⏳ စာသားများနှင့် အသံဖိုင်များကို ထုတ်ယူဖန်တီးနေပါသည်..."
@@ -393,8 +423,8 @@ if st.button("⚡ Script, Voice & Video Processing စတင်မည်", type=
         col_v1, col_v2 = st.columns(2)
         with col_v1:
           st.write("📺 **Original Video:**")
-          if video_url:
-            st.video(video_url)
+          if resolved_target_url:
+            st.video(resolved_target_url)
           else:
             st.warning("ဗီဒီယိုလင့်ခ် မပါရှိပါ။")
 
@@ -407,13 +437,10 @@ if st.button("⚡ Script, Voice & Video Processing စတင်မည်", type=
                 else "ဘာသာပြန်ချက် မရှိသေးပါ။"
             )
 
-            # gTTS ဖြင့် မြန်မာအသံဖိုင်ထုတ်ခြင်း (Note: gTTS တွင် tld သို့မဟုတ် speed ဖြင့် အသံအမျိုးအစားကို လိုသလို ညှိနိုင်သည်)
             tld_setting = "com"
             slow_setting = False
             if "Man" in voice_gender or "Boy" in voice_gender:
-              tld_setting = (
-                  "com.sg"  # ဒေသန္တရအသံထွက်အပြောင်းအလဲအတွက် ညှိနှိုင်းခြင်း
-              )
+              tld_setting = "com.sg"
 
             tts = gTTS(text=tts_text, lang="my", tld=tld_setting, slow=slow_setting)
             audio_fp = io.BytesIO()
@@ -486,5 +513,4 @@ if st.button("⚡ Script, Voice & Video Processing စတင်မည်", type=
     st.warning(
         "⚠️ ကျေးဇူးပြု၍ ဗီဒီယို Link ထည့်ပါ (သို့မဟုတ်) အောက်ပါ စာသားထည့်ရန်"
         " နေရာတွင် စာသားများ ရိုက်ထည့်/ကူးထည့်ပေးပါ။"
-        )
-        
+)
