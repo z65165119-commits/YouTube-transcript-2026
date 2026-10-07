@@ -250,42 +250,8 @@ def translate_mymemory(text):
   return " ".join(translated_chunks)
 
 
-def resolve_short_url(url):
-  """Short Link များကို တိုက်ရိုက် Real URL သို့ ဖော်ထုတ်ပေးခြင်း"""
-  if "xhslink.com" in url or "douyin.com" in url or "v.douyin.com" in url:
-    try:
-      headers = {
-          "User-Agent": (
-              "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
-              " (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
-          )
-      }
-      resp = requests.head(url, headers=headers, allow_redirects=True, timeout=5)
-      return resp.url
-    except Exception:
-      try:
-        resp = requests.get(url, headers=headers, timeout=5)
-        return resp.url
-      except Exception:
-        pass
-  return url
-
-
-def fetch_transcript_universal(v_url):
-  resolved_url = resolve_short_url(v_url)
-
-  video_id_match = re.search(r"(?:v=|\/)([0-9A-Za-z_-]{11})", resolved_url)
-  if video_id_match:
-    try:
-      v_id = video_id_match.group(1)
-      tx = YouTubeTranscriptApi.get_transcript(
-          v_id, languages=["en", "en-US", "zh-CN", "my", "auto"]
-      )
-      if tx:
-        return tx
-    except Exception:
-      pass
-
+def extract_media_info(v_url):
+  """yt-dlp ကိုအသုံးပြု၍ Direct Video Stream URL နှင့် Transcript/Metadata များကို ထုတ်ယူခြင်း"""
   ydl_opts = {
       "skip_download": True,
       "writesubtitles": True,
@@ -303,26 +269,32 @@ def fetch_transcript_universal(v_url):
 
   try:
     with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-      info = ydl.extract_info(resolved_url, download=False)
-      title = info.get("title", "RedNote / Social Video")
+      info = ydl.extract_info(v_url, download=False)
+      direct_url = info.get("url")
+      title = info.get("title", "Social Video")
       description = info.get("description", "")
+      duration = info.get("duration", 10.0)
+
+      # အကယ်၍ formats ထဲတွင် direct url ရှိနေပါက ယူမည်
+      if not direct_url and "formats" in info:
+        for f in info["formats"]:
+          if f.get("url") and f.get("vcodec") != "none":
+            direct_url = f.get("url")
+            break
 
       combined_meta = f"{title}. {description}".strip()
-      if combined_meta:
-        return [{
-            "text": combined_meta,
-            "start": 0.0,
-            "duration": info.get("duration", 10.0),
-        }]
-  except Exception as e:
+      transcript = [{
+          "text": combined_meta if combined_meta else "RedNote Video",
+          "start": 0.0,
+          "duration": duration if duration else 10.0,
+      }]
+
+      return direct_url, transcript
+  except Exception:
     pass
 
-  # အကယ်၍ အထက်ပါနည်းလမ်းများ မအောင်မြင်ပါက Manual ထည့်ရန် ညွှန်ပြမည့် Fallback Text
-  return [{
-      "text": (
-          "RedNote လင့်ခ်မှ အလိုအလျောက်စာသားဖတ်၍မရပါ။ ကျေးဇူးပြု၍"
-          " အောက်ပါစာသားထည့်သွင်းရန် နေရာတွင် တရုတ်စာသားကို တိုက်ရိုက်ကူးထည့်ပါ။"
-      ),
+  return None, [{
+      "text": "RedNote လင့်ခ်မှ အလိုအလျောက်စာသားဖတ်၍မရပါ။",
       "start": 0.0,
       "duration": 5.0,
   }]
@@ -331,13 +303,15 @@ def fetch_transcript_universal(v_url):
 if st.button("⚡ Script, Voice & Video Processing စတင်မည်", type="primary"):
   if manual_text_input.strip() or video_url:
     try:
-      resolved_target_url = (
-          resolve_short_url(video_url) if video_url else ""
-      )
+      direct_video_url = None
+      fetched_transcript = []
 
       with st.spinner(
-          "⏳ စာသားများနှင့် အသံဖိုင်များကို ထုတ်ယူဖန်တီးနေပါသည်..."
+          "⏳ ဗီဒီယိုနှင့် စာသားအချက်အလက်များကို ထုတ်ယူနေပါသည်..."
       ):
+        if video_url:
+          direct_video_url, fetched_transcript = extract_media_info(video_url)
+
         if manual_text_input.strip():
           pure_raw_text = manual_text_input.strip()
           fetched_transcript = [{
@@ -345,8 +319,13 @@ if st.button("⚡ Script, Voice & Video Processing စတင်မည်", type=
               "start": 0.0,
               "duration": 10.0,
           }]
-        else:
-          fetched_transcript = fetch_transcript_universal(video_url)
+        elif not fetched_transcript or not fetched_transcript[0]["text"]:
+          pure_raw_text = "RedNote Video Content"
+          fetched_transcript = [{
+              "text": pure_raw_text,
+              "start": 0.0,
+              "duration": 10.0,
+          }]
 
         original_lines = []
         pure_texts = []
@@ -423,8 +402,10 @@ if st.button("⚡ Script, Voice & Video Processing စတင်မည်", type=
         col_v1, col_v2 = st.columns(2)
         with col_v1:
           st.write("📺 **Original Video:**")
-          if resolved_target_url:
-            st.video(resolved_target_url)
+          if direct_video_url:
+            st.video(direct_video_url)
+          elif video_url:
+            st.video(video_url)
           else:
             st.warning("ဗီဒီယိုလင့်ခ် မပါရှိပါ။")
 
@@ -513,4 +494,5 @@ if st.button("⚡ Script, Voice & Video Processing စတင်မည်", type=
     st.warning(
         "⚠️ ကျေးဇူးပြု၍ ဗီဒီယို Link ထည့်ပါ (သို့မဟုတ်) အောက်ပါ စာသားထည့်ရန်"
         " နေရာတွင် စာသားများ ရိုက်ထည့်/ကူးထည့်ပေးပါ။"
-)
+    )
+    
