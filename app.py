@@ -169,11 +169,12 @@ if not is_vip and current_usage >= FREE_LIMIT:
 # ---------------------------------------------------------
 video_url = st.text_input("🔗 YouTube (သို့) RedNote Video URL လင့်ခ်ထည့်ရန်:", "")
 manual_text_input = st.text_area(
-    "📝 (သို့မဟုတ်) ဗီဒီယိုစာသားများကို တိုက်ရိုက်ကူးထည့်ရန် (Optional):",
+    "📝 (သို့မဟုတ်) ဗီဒီယိုစာသားများကို တိုက်ရိုက်ကူးထည့်ရန် (Recommended for"
+    " RedNote):",
     "",
     placeholder=(
-        "လင့်ခ်မှ အချက်အလက်ယူ၍မရပါက ဤနေရာတွင် စာသားများကို"
-        " ကူးထည့်နိုင်ပါသည်..."
+        "လင့်ခ်မှ စာသားဖတ်မရပါက ဤနေရာတွင် တရုတ် (သို့) အင်္ဂလိပ်စာသားများကို"
+        " ကူးထည့်ပေးနိုင်ပါသည်..."
     ),
 )
 
@@ -203,7 +204,6 @@ def generate_srt(transcript_data):
 
 
 def translate_to_english(text):
-  """မည်သည့်ဘာသာစကားမဆို English သို့ ဘာသာပြန်ရန် သို့မဟုတ် Original English ဖြစ်က အတိုင်းထားရန်"""
   if not text.strip():
     return ""
 
@@ -275,7 +275,7 @@ def fetch_script_universal(v_url):
       "skip_download": True,
       "writesubtitles": True,
       "writeautomaticsub": True,
-      "subtitleslangs": ["en", "en-US"],
+      "subtitleslangs": ["en", "en-US", "zh"],
       "quiet": True,
       "geo_bypass": True,
       "http_headers": {
@@ -314,7 +314,10 @@ if st.button("⚡ English Script ထုတ်ယူမည်", type="primary"):
       )
 
       if resolved_target_url and not manual_text_input.strip():
-        st.video(resolved_target_url)
+        try:
+          st.video(resolved_target_url)
+        except Exception:
+          pass
 
       with st.spinner("⏳ စာသားများနှင့် အချက်အလက်များကို ထုတ်ယူနေပါသည်..."):
         if manual_text_input.strip():
@@ -324,8 +327,9 @@ if st.button("⚡ English Script ထုတ်ယူမည်", type="primary"):
           fetched_transcript = fetch_script_universal(video_url)
           if not fetched_transcript:
             raise Exception(
-                "လင့်ခ်မှ အလိုအလျောက် စာသားဆွဲထုတ်၍မရပါ။ ကျေးဇူးပြု၍"
-                " အထက်ပါ 📝 စာသားထည့်ရန် နေရာတွင် စာသားများကို ကူးထည့်ပေးပါ။"
+                "RedNote လင့်ခ်မှ အလိုအလျောက် စာသားဆွဲထုတ်၍မရပါ။ ကျေးဇူးပြု၍"
+                " အထက်ပါ 📝 စာသားထည့်ရန် နေရာတွင် RedNote ဗီဒီယိုထဲက"
+                " စာသားများကို ကူးထည့်ပေးပါ။"
             )
 
         original_lines = []
@@ -415,5 +419,5 @@ if st.button("⚡ English Script ထုတ်ယူမည်", type="primary"):
     st.warning(
         "⚠️ ကျေးဇူးပြု၍ ဗီဒီယို Link ထည့်ပါ (သို့မဟုတ်) အထက်ပါ စာသားထည့်ရန်"
         " နေရာတွင် စာသားများ ရိုက်ထည့်/ကူးထည့်ပေးပါ။"
-           )
+        )
     
