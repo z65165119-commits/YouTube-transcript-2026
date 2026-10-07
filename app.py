@@ -67,9 +67,8 @@ def increment_user_usage(email):
 
 
 # ---------------------------------------------------------
-# 🔑 LOGIN SESSION MANAGEMENT
+# 🔑 LOGIN SESSION MANAGEMENT & VIP PLANS
 # ---------------------------------------------------------
-# VIP Email များနှင့် ၎င်းတို့၏ Plan များ (သို့မဟုတ် အောက်ပါအတိုင်း သတ်မှတ်နိုင်သည်)
 VIP_USERS = {
     "soemoe@gmail.com": "1 Year",
     "phayphaygyi980@gmail.com": "3 Months",
@@ -141,10 +140,10 @@ else:
 st.sidebar.markdown("---")
 st.sidebar.header("💎 VIP နှုန်းထားများ & အစီအစဉ်များ")
 st.sidebar.markdown("""
-- **၁ လစာ (1 Month):** သင့်တော်သော နှုန်းထား
-- **၂ လစာ (2 Months):** သက်သာသော နှုန်းထား
-- **၃ လစာ (3 Months):** လူကြိုက်အများဆုံး
-- **၁ နှစ်စာ (1 Year):** အထူးချိုသာသော နှုန်းထား
+- **၁ လစာ (1 Month):** 5,000 MMK / 5$
+- **၂ လစာ (2 Months):** 9,000 MMK / 9$
+- **၃ လစာ (3 Months):** 12,000 MMK / 12$
+- **၁ နှစ်စာ (1 Year):** 35,000 MMK / 35$
 """)
 st.sidebar.markdown(
     "💬 **VIP ဝယ်ယူရန် ဆက်သွယ်ရန်:**\nTelegram: [@lynn_m2026](https://t.me/lynn_m2026)"
@@ -234,8 +233,8 @@ def translate_mymemory(text):
 
 
 def fetch_transcript_universal(v_url):
+  # 1. YouTube ဖြစ်ပါက Transcript API အရင်စမ်းမည်
   video_id_match = re.search(r"(?:v=|\/)([0-9A-Za-z_-]{11})", v_url)
-
   if video_id_match:
     try:
       v_id = video_id_match.group(1)
@@ -247,6 +246,7 @@ def fetch_transcript_universal(v_url):
     except Exception:
       pass
 
+  # 2. yt-dlp ဖြင့် Subtitles / Captions ထုတ်ယူရန်
   ydl_opts = {
       "skip_download": True,
       "writesubtitles": True,
@@ -258,7 +258,7 @@ def fetch_transcript_universal(v_url):
   try:
     with yt_dlp.YoutubeDL(ydl_opts) as ydl:
       info = ydl.extract_info(v_url, download=False)
-      subtitles = info.get("subtitles") or info.get("automatic_captions")
+      subtitles = info.get("subtitle") or info.get("automatic_captions")
 
       if subtitles:
         lang = None
@@ -266,40 +266,68 @@ def fetch_transcript_universal(v_url):
           if l in subtitles:
             lang = l
             break
-        if not lang:
+        if not lang and subtitles:
           lang = list(subtitles.keys())[0]
 
-        sub_data = subtitles[lang]
-        json_url = next(
-            (
-                s["url"]
-                for s in sub_data
-                if s.get("ext") == "json3" or "json" in s.get("ext", "")
-            ),
-            None,
-        )
-        if json_url:
-          res = requests.get(json_url, timeout=10).json()
-          parsed_transcript = []
-          for event in res.get("events", []):
-            if "segs" in event:
-              text = "".join(
-                  [s.get("utf8", "") for s in event["segs"]]
-              ).strip()
-              if text and text != "\n":
-                start = event.get("tStartMs", 0) / 1000.0
-                dur = event.get("dDurationMs", 0) / 1000.0
-                parsed_transcript.append(
-                    {"text": text, "start": start, "duration": dur}
-                )
-          if parsed_transcript:
-            return parsed_transcript
+        if lang and subtitles.get(lang):
+          sub_data = subtitles[lang]
+          json_url = next(
+              (
+                  s["url"]
+                  for s in sub_data
+                  if s.get("ext") == "json3" or "json" in s.get("ext", "")
+              ),
+              None,
+          )
+          if json_url:
+            res = requests.get(json_url, timeout=10).json()
+            parsed_transcript = []
+            for event in res.get("events", []):
+              if "segs" in event:
+                text = "".join(
+                    [s.get("utf8", "") for s in event["segs"]]
+                ).strip()
+                if text and text != "\n":
+                  start = event.get("tStartMs", 0) / 1000.0
+                  dur = event.get("dDurationMs", 0) / 1000.0
+                  parsed_transcript.append(
+                      {"text": text, "start": start, "duration": dur}
+                  )
+            if parsed_transcript:
+              return parsed_transcript
+
+      # Subtitles မရှိလျှင် Video Title နှင့် Description ကို ယူသုံးမည် (RedNote ကဲ့သို့သော နေရာများအတွက်)
+      title = info.get("title", "")
+      description = info.get("description", "")
+      combined_meta = f"{title}. {description}".strip()
+      if combined_meta:
+        return [{
+            "text": combined_meta,
+            "start": 0.0,
+            "duration": info.get("duration", 5.0),
+        }]
+
   except Exception as e:
     pass
 
+  # 3. အကယ်၍ အားလုံးမရပါက Description သို့မဟုတ် Title ကို ယူရန် Fallback
+  try:
+    with yt_dlp.YoutubeDL({"quiet": True, "skip_download": True}) as ydl:
+      info = ydl.extract_info(v_url, download=False)
+      title = info.get("title", "RedNote Video")
+      desc = info.get("description", "")
+      fallback_text = (
+          f"ဗီဒီယိုခေါင်းစဉ်: {title}. ဖော်ပြချက်: {desc}"
+          if desc
+          else f"ဗီဒီယိုခေါင်းစဉ်: {title}"
+      )
+      return [{"text": fallback_text, "start": 0.0, "duration": 5.0}]
+  except Exception:
+    pass
+
   raise Exception(
-      "ဒီဗီဒီယိုလင့်ခ်တွင် ဖတ်ရှုနိုင်သော Subtitle / Transcript (စာသားအချက်အလက်)"
-      " လုံးဝ မရှိပါ သို့မဟုတ် ပံ့ပိုးမထားပါ။"
+      "ဒီဗီဒီယိုလင့်ခ်မှ အချက်အလက်များကို ထုတ်ယူ၍မရပါ။ ကျေးဇူးပြု၍ လင့်ခ်မှန်ကန်မှု"
+      " ရှိမရှိ စစ်ဆေးပါ။"
   )
 
 
@@ -430,4 +458,3 @@ if st.button("⚡ Script & AI Processing စတင်မည်", type="primary")
       st.error(f"❌ အမှားအယွင်း ဖြစ်ပေါ်သွားပါသည်: {str(e)}")
   else:
     st.warning("⚠️ ကျေးဇူးပြု၍ ဗီဒီယို Link ရိုက်ထည့်ပေးပါ။")
-          
