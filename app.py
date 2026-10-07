@@ -9,7 +9,7 @@ import yt_dlp
 from youtube_transcript_api import YouTubeTranscriptApi
 
 st.set_page_config(
-    page_title="YouTube & RedNote Script Studio",
+    page_title="YouTube & RedNote English Script Studio",
     page_icon="🔴",
     layout="wide",
 )
@@ -85,7 +85,7 @@ if "logged_in" not in st.session_state:
 col_title, col_auth = st.columns([3, 1])
 
 with col_title:
-  st.title("🔴⚡ YouTube & RedNote Script Studio")
+  st.title("🔴⚡ YouTube & RedNote English Script Studio")
 
 with col_auth:
   if st.session_state["logged_in"]:
@@ -167,15 +167,13 @@ if not is_vip and current_usage >= FREE_LIMIT:
 # ---------------------------------------------------------
 # 🎬 MAIN APP LOGIC
 # ---------------------------------------------------------
-video_url = st.text_input(
-    "🔗 YouTube သို့မဟုတ် RedNote (Xiaohongshu) Video URL ကို ရိုက်ထည့်ပါ:", ""
-)
+video_url = st.text_input("🔗 YouTube (သို့) RedNote Video URL လင့်ခ်ထည့်ရန်:", "")
 manual_text_input = st.text_area(
-    "📝 (သို့မဟုတ်) ဗီဒီယိုထဲက စာသားများကို တိုက်ရိုက်ကူးထည့်ရန် (Optional):",
+    "📝 (သို့မဟုတ်) ဗီဒီယိုစာသားများကို တိုက်ရိုက်ကူးထည့်ရန် (Optional):",
     "",
     placeholder=(
-        "လင့်ခ်မှ စာသားဖတ်မရပါက ဤနေရာတွင် တရုတ် (သို့မဟုတ်) အင်္ဂလိပ်"
-        " စာသားများကို တိုက်ရိုက်ကူးထည့်နိုင်ပါသည်..."
+        "လင့်ခ်မှ အချက်အလက်ယူ၍မရပါက ဤနေရာတွင် စာသားများကို"
+        " ကူးထည့်နိုင်ပါသည်..."
     ),
 )
 
@@ -204,7 +202,8 @@ def generate_srt(transcript_data):
   return srt_output
 
 
-def translate_mymemory(text):
+def translate_to_english(text):
+  """မည်သည့်ဘာသာစကားမဆို English သို့ ဘာသာပြန်ရန် သို့မဟုတ် Original English ဖြစ်က အတိုင်းထားရန်"""
   if not text.strip():
     return ""
 
@@ -217,7 +216,7 @@ def translate_mymemory(text):
   for part in sentences:
     try:
       url = "https://api.mymemory.translated.net/get"
-      params = {"q": part, "langpair": "autodetect|my"}
+      params = {"q": part, "langpair": "autodetect|en"}
       response = requests.get(url, params=params, timeout=10)
       if response.status_code == 200:
         data = response.json()
@@ -265,7 +264,7 @@ def fetch_script_universal(v_url):
     try:
       v_id = video_id_match.group(1)
       tx = YouTubeTranscriptApi.get_transcript(
-          v_id, languages=["en", "en-US", "zh-CN", "my", "auto"]
+          v_id, languages=["en", "en-US", "auto"]
       )
       if tx:
         return tx
@@ -276,7 +275,7 @@ def fetch_script_universal(v_url):
       "skip_download": True,
       "writesubtitles": True,
       "writeautomaticsub": True,
-      "subtitleslangs": ["en", "zh", "zh-CN", "my", "en-US"],
+      "subtitleslangs": ["en", "en-US"],
       "quiet": True,
       "geo_bypass": True,
       "http_headers": {
@@ -290,7 +289,7 @@ def fetch_script_universal(v_url):
   try:
     with yt_dlp.YoutubeDL(ydl_opts) as ydl:
       info = ydl.extract_info(resolved_url, download=False)
-      title = info.get("title", "Video Post")
+      title = info.get("title", "")
       description = info.get("description", "")
       duration = info.get("duration", 10.0)
 
@@ -304,36 +303,30 @@ def fetch_script_universal(v_url):
   except Exception:
     pass
 
-  return [{
-      "text": (
-          "ဗီဒီယိုလင့်ခ်မှ အလိုအလျောက် စာသားထုတ်ယူ၍မရပါ။ ကျေးဇူးပြု၍"
-          " အထက်ပါ စာသားထည့်ရန် နေရာတွင် တိုက်ရိုက်ကူးထည့်ပါ။"
-      ),
-      "start": 0.0,
-      "duration": 5.0,
-  }]
+  return []
 
 
-if st.button("⚡ Script ထုတ်ယူမည်", type="primary"):
+if st.button("⚡ English Script ထုတ်ယူမည်", type="primary"):
   if manual_text_input.strip() or video_url:
     try:
       resolved_target_url = (
           resolve_short_url(video_url) if video_url else ""
       )
 
-      if resolved_target_url:
+      if resolved_target_url and not manual_text_input.strip():
         st.video(resolved_target_url)
 
       with st.spinner("⏳ စာသားများနှင့် အချက်အလက်များကို ထုတ်ယူနေပါသည်..."):
         if manual_text_input.strip():
-          pure_raw_text = manual_text_input.strip()
-          fetched_transcript = [{
-              "text": pure_raw_text,
-              "start": 0.0,
-              "duration": 10.0,
-          }]
+          raw_text = manual_text_input.strip()
+          fetched_transcript = [{"text": raw_text, "start": 0.0, "duration": 10.0}]
         else:
           fetched_transcript = fetch_script_universal(video_url)
+          if not fetched_transcript:
+            raise Exception(
+                "လင့်ခ်မှ အလိုအလျောက် စာသားဆွဲထုတ်၍မရပါ။ ကျေးဇူးပြု၍"
+                " အထက်ပါ 📝 စာသားထည့်ရန် နေရာတွင် စာသားများကို ကူးထည့်ပေးပါ။"
+            )
 
         original_lines = []
         pure_texts = []
@@ -349,86 +342,66 @@ if st.button("⚡ Script ထုတ်ယူမည်", type="primary"):
           else:
             original_lines.append(text)
 
-        full_original_script = "\n".join(original_lines)
-        pure_raw_text = " ".join(pure_texts)
-
-        words = len(pure_raw_text.split())
-        chars = len(pure_raw_text)
-        est_read_time = round(words / 150, 1)
+        raw_source_text = " ".join(pure_texts)
 
       with st.spinner(
-          "⏳ မြန်မာဘာသာသို့ အပိုင်းလိုက် ဘာသာပြန်ဆိုနေပါသည်..."
+          "⏳ English ဘာသာသို့ ပြောင်းလဲပြင်ဆင်နေပါသည် (ခဏစောင့်ပါ)..."
       ):
-        myanmar_translation = translate_mymemory(pure_raw_text[: 4000 * 3])
+        english_script = translate_to_english(raw_source_text[: 4000 * 3])
         srt_content = generate_srt(fetched_transcript)
 
-        sentences = [s.strip() for s in pure_raw_text.split("။") if s.strip()]
-        if not sentences:
-          sentences = [
-              s.strip() for s in pure_raw_text.split(". ") if s.strip()
-          ]
+        sentences = [s.strip() for s in english_script.split(". ") if s.strip()]
         summary_count = (
             3
             if summary_length == "Short"
             else (6 if summary_length == "Medium" else 10)
         )
         summary_sentences = sentences[:summary_count]
-        summary_orig = (
-            ".".join(summary_sentences) + "."
+        summary_en = (
+            ". ".join(summary_sentences) + "."
             if summary_sentences
-            else pure_raw_text[:300]
+            else english_script[:300]
         )
-        summary_my = translate_mymemory(summary_orig)
 
       st.success("✅ အားလုံး အောင်မြင်စွာ ဆောင်ရွက်ပြီးပါပြီ!")
 
       if not is_vip:
         increment_user_usage(clean_email)
 
+      words = len(english_script.split())
+      chars = len(english_script)
+      est_read_time = round(words / 150, 1)
+
       m1, m2, m3 = st.columns(3)
-      m1.metric("📝 စာသားလုံးရေ", f"{words:,}")
-      m2.metric("🔤 အက္ခရာရေ", f"{chars:,}")
-      m3.metric("⏱️ ခန့်မှန်းဖတ်ချိန်", f"{est_read_time} မိနစ်")
+      m1.metric("📝 Words Count", f"{words:,}")
+      m2.metric("🔤 Chars Count", f"{chars:,}")
+      m3.metric("⏱️ Est. Read Time", f"{est_read_time} mins")
 
       st.markdown("---")
 
-      tab1, tab2, tab3, tab4 = st.tabs([
-          "🌐 Original Script",
-          "🇲🇲 မြန်မာ ဘာသာပြန်",
-          "🤖 AI Summary & Recap",
+      tab1, tab2, tab3 = st.tabs([
+          "🇬🇧 English Script",
+          "🤖 AI English Summary",
           "📥 Subtitles (.srt)",
       ])
 
       with tab1:
-        st.subheader("Original Script")
-        st.code(full_original_script)
+        st.subheader("English Script")
+        st.text_area("English Text:", value=english_script, height=300)
         st.download_button(
-            "📥 Download Original Script (.txt)",
-            data=full_original_script.encode("utf-8-sig"),
-            file_name="original_script.txt",
+            "📥 Download English Script (.txt)",
+            data=english_script.encode("utf-8-sig"),
+            file_name="english_script.txt",
             mime="text/plain; charset=utf-8",
         )
 
       with tab2:
-        st.subheader("မြန်မာ ဘာသာပြန် Script")
-        st.code(myanmar_translation)
-        st.download_button(
-            "📥 Download မြန်မာ Script (.txt)",
-            data=myanmar_translation.encode("utf-8-sig"),
-            file_name="myanmar_script.txt",
-            mime="text/plain; charset=utf-8",
-        )
+        st.subheader("🤖 AI English Summary")
+        st.info(summary_en)
 
       with tab3:
-        st.subheader("🤖 AI Script Summary & Story Recap")
-        st.write("**Original Summary:**")
-        st.code(summary_orig)
-        st.write("**မြန်မာအနှစ်ချုပ် / ပြန်လည်ဆန်းသစ်ချက်:**")
-        st.code(summary_my)
-
-      with tab4:
         st.subheader("📄 SRT Subtitle File")
-        st.code(srt_content[:2000] + "\n[Truncated Preview]")
+        st.text_area("SRT Preview:", value=srt_content[:2000], height=250)
         st.download_button(
             "📥 Download Subtitle (.srt)",
             data=srt_content.encode("utf-8-sig"),
@@ -440,7 +413,7 @@ if st.button("⚡ Script ထုတ်ယူမည်", type="primary"):
       st.error(f"❌ အမှားအယွင်း ဖြစ်ပေါ်သွားပါသည်: {str(e)}")
   else:
     st.warning(
-        "⚠️ ကျေးဇူးပြု၍ ဗီဒီယို Link ထည့်ပါ (သို့မဟုတ်) အောက်ပါ စာသားထည့်ရန်"
+        "⚠️ ကျေးဇူးပြု၍ ဗီဒီယို Link ထည့်ပါ (သို့မဟုတ်) အထက်ပါ စာသားထည့်ရန်"
         " နေရာတွင် စာသားများ ရိုက်ထည့်/ကူးထည့်ပေးပါ။"
-      )
-      
+           )
+    
