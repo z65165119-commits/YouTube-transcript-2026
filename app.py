@@ -171,7 +171,7 @@ if not is_vip and current_usage >= FREE_LIMIT:
 # 🎬 MAIN APP LOGIC
 # ---------------------------------------------------------
 video_url = st.text_input(
-    "🔗 YouTube သို့မဟုတ် Xiaohongshu (RedNote) Video URL ကို ရိုက်ထည့်ပါ:", ""
+    "🔗 YouTube သို့မဟုတ် RedNote (Xiaohongshu) Video URL ကို ရိုက်ထည့်ပါ:", ""
 )
 
 
@@ -233,7 +233,7 @@ def translate_mymemory(text):
 
 
 def fetch_transcript_universal(v_url):
-  # 1. YouTube ဖြစ်ပါက Transcript API အရင်စမ်းမည်
+  # 1. YouTube ဖြစ်ပါက YouTube Transcript API ဖြင့် အရင်စမ်းမည်
   video_id_match = re.search(r"(?:v=|\/)([0-9A-Za-z_-]{11})", v_url)
   if video_id_match:
     try:
@@ -246,23 +246,25 @@ def fetch_transcript_universal(v_url):
     except Exception:
       pass
 
-  # 2. yt-dlp ဖြင့် Subtitles / Captions ထုတ်ယူရန်
+  # 2. yt-dlp ဖြင့် RedNote အပါအဝင် မည်သည့်လင့်ခ်မဆို Subtitle / Captions ထုတ်ယူရန်
   ydl_opts = {
       "skip_download": True,
       "writesubtitles": True,
       "writeautomaticsub": True,
       "subtitleslangs": ["en", "zh", "zh-CN", "my", "en-US"],
       "quiet": True,
+      "extractor_args": {"generic": {"impersonate": "chrome"}},
   }
 
   try:
     with yt_dlp.YoutubeDL(ydl_opts) as ydl:
       info = ydl.extract_info(v_url, download=False)
-      subtitles = info.get("subtitle") or info.get("automatic_captions")
 
+      # Subtitles ရှိမရှိ စစ်ဆေးခြင်း
+      subtitles = info.get("subtitles") or info.get("automatic_captions")
       if subtitles:
         lang = None
-        for l in ["en", "zh", "zh-CN", "en-US", "my"]:
+        for l in ["zh", "zh-CN", "en", "en-US", "my"]:
           if l in subtitles:
             lang = l
             break
@@ -296,25 +298,38 @@ def fetch_transcript_universal(v_url):
             if parsed_transcript:
               return parsed_transcript
 
-      # Subtitles မရှိလျှင် Video Title နှင့် Description ကို ယူသုံးမည် (RedNote ကဲ့သို့သော နေရာများအတွက်)
+      # Subtitles မရှိပါက RedNote (Xiaohongshu) ၏ Title, Description နှင့် Chapters များကို Script အဖြစ် ယူသုံးမည်
       title = info.get("title", "")
       description = info.get("description", "")
+      chapters = info.get("chapters", [])
+
+      if chapters:
+        parsed_transcript = []
+        for ch in chapters:
+          parsed_transcript.append({
+              "text": ch.get("title", ""),
+              "start": ch.get("start_time", 0.0),
+              "duration": ch.get("end_time", ch.get("start_time", 0.0) + 5.0)
+              - ch.get("start_time", 0.0),
+          })
+        return parsed_transcript
+
       combined_meta = f"{title}. {description}".strip()
       if combined_meta:
         return [{
             "text": combined_meta,
             "start": 0.0,
-            "duration": info.get("duration", 5.0),
+            "duration": info.get("duration", 10.0),
         }]
 
   except Exception as e:
     pass
 
-  # 3. အကယ်၍ အားလုံးမရပါက Description သို့မဟုတ် Title ကို ယူရန် Fallback
+  # 3. အထက်ပါနည်းလမ်းများ မအောင်မြင်ပါက အခြေခံအကျဆုံး Title ဖြင့် Fallback ထုတ်ပေးရန်
   try:
     with yt_dlp.YoutubeDL({"quiet": True, "skip_download": True}) as ydl:
       info = ydl.extract_info(v_url, download=False)
-      title = info.get("title", "RedNote Video")
+      title = info.get("title", "RedNote Video Post")
       desc = info.get("description", "")
       fallback_text = (
           f"ဗီဒီယိုခေါင်းစဉ်: {title}. ဖော်ပြချက်: {desc}"
@@ -326,8 +341,8 @@ def fetch_transcript_universal(v_url):
     pass
 
   raise Exception(
-      "ဒီဗီဒီယိုလင့်ခ်မှ အချက်အလက်များကို ထုတ်ယူ၍မရပါ။ ကျေးဇူးပြု၍ လင့်ခ်မှန်ကန်မှု"
-      " ရှိမရှိ စစ်ဆေးပါ။"
+      "ဒီ RedNote လင့်ခ်မှ အချက်အလက်များကို ထုတ်ယူ၍မရပါ။ လင့်ခ်မှန်ကန်မှုနှင့်"
+      " ဗီဒီယိုပွင့်နိုင်ခြင်း ရှိမရှိ စစ်ဆေးပါ။"
   )
 
 
@@ -337,7 +352,7 @@ if st.button("⚡ Script & AI Processing စတင်မည်", type="primary")
       st.video(video_url)
 
       with st.spinner(
-          "⏳ ဗီဒီယိုအချက်အလက်နှင့် စာသားများကို ထုတ်ယူနေပါသည်..."
+          "⏳ RedNote ဗီဒီယို အချက်အလက်နှင့် စာသားများကို ထုတ်ယူနေပါသည်..."
       ):
         fetched_transcript = fetch_transcript_universal(video_url)
 
@@ -458,3 +473,4 @@ if st.button("⚡ Script & AI Processing စတင်မည်", type="primary")
       st.error(f"❌ အမှားအယွင်း ဖြစ်ပေါ်သွားပါသည်: {str(e)}")
   else:
     st.warning("⚠️ ကျေးဇူးပြု၍ ဗီဒီယို Link ရိုက်ထည့်ပေးပါ။")
+      
