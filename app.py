@@ -3,15 +3,15 @@ import io
 import json
 import os
 import re
-import tempfile
 import time
 from gtts import gTTS
 import requests
 import streamlit as st
+import yt_dlp
 from youtube_transcript_api import YouTubeTranscriptApi
 
 st.set_page_config(
-    page_title="YouTube & RedNote AI Studio Pro",
+    page_title="YouTube & RedNote AI Studio Suite",
     page_icon="🔴",
     layout="wide",
 )
@@ -77,7 +77,7 @@ if "logged_in" not in st.session_state:
 col_title, col_auth = st.columns([3, 1])
 
 with col_title:
-  st.title("🔴⚡ YouTube & RedNote AI Studio Pro")
+  st.title("🔴⚡ YouTube & RedNote AI Studio")
 
 with col_auth:
   if st.session_state["logged_in"]:
@@ -131,13 +131,14 @@ else:
 
 st.sidebar.markdown("---")
 st.sidebar.header("⚙️ Options")
-show_timestamp = st.sidebar.checkbox("Timestamps ထည့်ရန်", value=True)
+show_timestamp = st.sidebar.checkbox("Timestamps ထည့်ရန်", value=False)
 summary_length = st.sidebar.select_slider(
     "AI Summary အတိုအရှည်",
     options=["Short", "Medium", "Detailed"],
     value="Medium",
 )
 
+# 🛑 Non-VIP တွေအတွက် ၅ ကြိမ်ပြည့်ရင် ရပ်တန့်မည့် စနစ်
 if not is_vip and current_usage >= FREE_LIMIT:
   st.error("❌ သင့်၏ အခမဲ့ ၅ ကြိမ် အသုံးပြုခွင့် ကုန်ဆုံးသွားပါပြီ။")
   st.warning(
@@ -149,10 +150,8 @@ if not is_vip and current_usage >= FREE_LIMIT:
 # ---------------------------------------------------------
 # 🎬 MAIN APP LOGIC
 # ---------------------------------------------------------
-video_url = st.text_input("🔗 YouTube Video URL (ရှိလျှင် ထည့်ရန်):", "")
-uploaded_video_file = st.file_uploader(
-    "📁 RedNote ဗီဒီယိုဖိုင်ကို တိုက်ရိုက် Upload လုပ်ပါ (1.30 mins အပြည့်အစုံရရန်):",
-    type=["mp4", "mov", "avi"],
+media_url = st.text_input(
+    "🔗 YouTube (သို့) RedNote (Xiaohongshu) Video URL ကို ရိုက်ထည့်ပါ:", ""
 )
 
 
@@ -181,6 +180,7 @@ def generate_srt(transcript_data):
 
 
 def translate_mymemory(text):
+  """MyMemory Translation API ကို အသုံးပြု၍ ဘာသာပြန်ခြင်း"""
   if not text.strip():
     return ""
 
@@ -193,8 +193,9 @@ def translate_mymemory(text):
   for part in sentences:
     try:
       url = "https://api.mymemory.translated.net/get"
+      # RedNote ဖြစ်ပါက တရုတ် သို့မဟုတ် အင်္ဂလိပ်မှ မြန်မာသို့ အလိုအလျောက် ချိန်ရန်
       params = {"q": part, "langpair": "autodetect|my"}
-      response = requests.get(url, params=params, timeout=15)
+      response = requests.get(url, params=params, timeout=10)
       if response.status_code == 200:
         data = response.json()
         translated_text = data.get("responseData", {}).get(
@@ -213,130 +214,149 @@ def translate_mymemory(text):
   return " ".join(translated_chunks)
 
 
-if st.button("⚡ ဗီဒီယိုဖိုင်မှ Script အပြည့်အစုံ ထုတ်ယူမည်", type="primary"):
-  if uploaded_video_file is not None or video_url:
+def fetch_rednote_metadata(url):
+  """yt-dlp ကိုသုံးပြီး RedNote / Xiaohongshu ဗီဒီယိုအချက်အလက်နှင့် direct stream ထုတ်ယူရန်"""
+  ydl_opts = {"quiet": True, "skip_download": True}
+  try:
+    with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+      info = ydl.extract_info(url, download=False)
+      title = info.get("title", "RedNote Video")
+      description = info.get("description", "")
+      # Direct video URL
+      video_url = info.get("url") or info.get("requested_formats", [{}])[0].get(
+          "url"
+      )
+      return title, description, video_url
+  except Exception as e:
+    raise Exception(f"RedNote Link မှ Data ထုတ်ယူ၍မရပါ။ (Error: {str(e)})")
+
+
+if st.button("⚡ Script & AI Processing စတင်မည်", type="primary"):
+  if media_url:
     try:
-      fetched_transcript = []
+      # URL ပုံစံကိုကြည့်၍ YouTube လား RedNote လား ခွဲခြားမည်
+      is_rednote = (
+          "xiaohongshu" in media_url or "xhslink" in media_url or "rednote" in media_url
+      )
 
-      if uploaded_video_file is not None:
-        with tempfile.NamedTemporaryFile(
-            delete=False, suffix=".mp4"
-        ) as tmp_file:
-          tmp_file.write(uploaded_video_file.read())
-          tmp_path = tmp_file.name
+      if is_rednote:
+        with st.spinner("⏳ RedNote ဗီဒီယိုအချက်အလက်များကို ထုတ်ယူနေပါသည်..."):
+          title, description, direct_video_url = fetch_rednote_metadata(
+              media_url
+          )
+          st.video(media_url)
 
-        with st.spinner(
-            "⏳ RedNote ဗီဒီယိုဖိုင်မှ အသံများကို အစအဆုံး (1.30 mins) ဖတ်ရှုနေပါသည်..."
-        ):
-          try:
-            import whisper
+          pure_raw_text = f"{title}. {description}"
+          words = len(pure_raw_text.split())
+          chars = len(pure_raw_text)
+          est_read_time = round(words / 150, 1)
 
-            model = whisper.load_model("base")
-            result = model.transcribe(tmp_path)
-            segments = result.get("segments", [])
-            for seg in segments:
-              fetched_transcript.append({
-                  "text": seg["text"].strip(),
-                  "start": seg["start"],
-                  "duration": seg["end"] - seg["start"],
-              })
-          except Exception as ex:
-            st.error(
-                "❌ Whisper AI ဖြင့် အသံဖတ်ရှုရာတွင် အမှားဖြစ်သွားပါသည်:"
-                f" {str(ex)}"
-            )
+          full_script = f"Title: {title}\n\nDescription:\n{description}"
+          fetched_transcript = [
+              {"text": title, "start": 0.0, "duration": 5.0},
+              {"text": description, "start": 5.0, "duration": 10.0},
+          ]
+          srt_content = generate_srt(fetched_transcript)
 
-        if os.path.exists(tmp_path):
-          os.remove(tmp_path)
+        with st.spinner("⏳ မြန်မာဘာသာသို့ ဘာသာပြန်ဆိုနေပါသည်..."):
+          myanmar_translation = translate_mymemory(pure_raw_text)
+          summary_en = pure_raw_text[:300]
+          summary_my = translate_mymemory(summary_en)
 
       else:
-        video_id = extract_video_id = re.search(
-            r"(?:v=|\/)([0-9A-Za-z_-]{11})", video_url
-        )
+        # YouTube Logic
+        match = re.search(r"(?:v=|\/)([0-9A-Za-z_-]{11})", media_url)
+        video_id = match.group(1) if match else None
         if not video_id:
-          st.error("❌ YouTube Link မမှန်ပါ။ ပြန်စစ်ပေးပါ။")
+          st.error("❌ YouTube (သို့) RedNote Link မမှန်ပါ။ ပြန်စစ်ပေးပါ။")
           st.stop()
-        else:
-          st.video(video_url)
-          v_id = video_id.group(1)
-          fetched_transcript = YouTubeTranscriptApi.get_transcript(
-              v_id, languages=["en", "en-US", "my", "auto"]
+
+        st.video(media_url)
+        with st.spinner("⏳ YouTube Transcript များကို ထုတ်ယူနေပါသည်..."):
+          try:
+            fetched_transcript = YouTubeTranscriptApi.get_transcript(
+                video_id, languages=["en", "en-US", "my", "auto"]
+            )
+          except Exception:
+            ydl_opts = {
+                "skip_download": True,
+                "writesubtitles": True,
+                "writeautomaticsub": True,
+                "subtitleslangs": ["en", "my", "en-US"],
+                "quiet": True,
+            }
+            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+              info = ydl.extract_info(media_url, download=False)
+              # Fallback logic if needed
+              fetched_transcript = [
+                  {
+                      "text": info.get("title", "YouTube Video"),
+                      "start": 0.0,
+                      "duration": 5.0,
+                  }
+              ]
+
+          english_lines = []
+          pure_texts = []
+          for item in fetched_transcript:
+            start_str = format_time(item["start"])
+            text = item["text"].strip()
+            clean_t = re.sub(r"^\d+\.?\s*", "", text)
+            if clean_t:
+              pure_texts.append(clean_t)
+            if show_timestamp:
+              english_lines.append(f"[{start_str}] {text}")
+            else:
+              english_lines.append(text)
+
+          full_script = "\n".join(english_lines)
+          pure_raw_text = " ".join(pure_texts)
+          words = len(pure_raw_text.split())
+          chars = len(pure_raw_text)
+          est_read_time = round(words / 150, 1)
+
+        with st.spinner("⏳ မြန်မာဘာသာသို့ ဘာသာပြန်ဆိုနေပါသည်..."):
+          myanmar_translation = translate_mymemory(pure_raw_text[: 4000 * 3])
+          srt_content = generate_srt(fetched_transcript)
+          sentences = [s.strip() for s in pure_raw_text.split(". ") if s.strip()]
+          summary_count = (
+              3
+              if summary_length == "Short"
+              else (6 if summary_length == "Medium" else 10)
           )
+          summary_sentences = sentences[:summary_count]
+          summary_en = (
+              ". ".join(summary_sentences) + "."
+              if summary_sentences
+              else pure_raw_text[:300]
+          )
+          summary_my = translate_mymemory(summary_en)
 
-      if not fetched_transcript:
-        raise Exception(
-            "ဗီဒီယိုဖိုင်မှ စာသားအချက်အလက် တစ်စုံတစ်ရာ ထုတ်ယူ၍မရပါ။"
-        )
-
-      with st.spinner("⏳ စာသားများနှင့် အချိန်အမှတ်အသားများကို စီစဉ်နေပါသည်..."):
-        original_lines = []
-        pure_texts = []
-        for item in fetched_transcript:
-          start_str = format_time(item["start"])
-          text = item["text"].strip()
-          clean_t = re.sub(r"^\d+\.?\s*", "", text)
-          if clean_t:
-            pure_texts.append(clean_t)
-
-          if show_timestamp:
-            original_lines.append(f"[{start_str}] {text}")
-          else:
-            original_lines.append(text)
-
-        full_original_script = "\n".join(original_lines)
-        pure_raw_text = " ".join(pure_texts)
-
-        words = len(pure_raw_text.split())
-        chars = len(pure_raw_text)
-        est_read_time = round(words / 150, 1)
-
-      with st.spinner("⏳ မြန်မာဘာသာသို့ အပြည့်အစုံ ဘာသာပြန်ဆိုနေပါသည်..."):
-        myanmar_translation = translate_mymemory(pure_raw_text[: 4000 * 5])
-        srt_content = generate_srt(fetched_transcript)
-
-        sentences = [s.strip() for s in pure_raw_text.split("။") if s.strip()]
-        if not sentences:
-          sentences = [
-              s.strip() for s in pure_raw_text.split(". ") if s.strip()
-          ]
-        summary_count = (
-            3
-            if summary_length == "Short"
-            else (6 if summary_length == "Medium" else 10)
-        )
-        summary_sentences = sentences[:summary_count]
-        summary_en = (
-            ".".join(summary_sentences) + "."
-            if summary_sentences
-            else pure_raw_text[:300]
-        )
-        summary_my = translate_mymemory(summary_en)
-
-      st.success("✅ ဗီဒီယိုဖိုင်မှ Script အပြည့်အစုံ အောင်မြင်စွာ ထွက်ရှိလာပါပြီ!")
+      st.success("✅ အားလုံး အောင်မြင်စွာ ဆောင်ရွက်ပြီးပါပြီ!")
 
       if not is_vip:
         increment_user_usage(clean_email)
 
       m1, m2, m3 = st.columns(3)
-      m1.metric("📝 စာသားလုံးရေ", f"{words:,}")
-      m2.metric("🔤 အက္ခရာရေ", f"{chars:,}")
+      m1.metric("📝 စာသားလုံးရေ (Words)", f"{words:,}")
+      m2.metric("🔤 အက္ခရာရေ (Chars)", f"{chars:,}")
       m3.metric("⏱️ ခန့်မှန်းဖတ်ချိန်", f"{est_read_time} မိနစ်")
 
       st.markdown("---")
 
       tab1, tab2, tab3, tab4 = st.tabs([
-          "🌐 Original Script (Full)",
+          "📄 Original Script / Details",
           "🇲🇲 မြန်မာ ဘာသာပြန်",
           "🤖 AI Summary & Recap",
-          "📥 Subtitles (.srt)",
+          "📥 Subtitles & TTS Audio",
       ])
 
       with tab1:
-        st.subheader("Original Script အပြည့်အစုံ")
-        st.code(full_original_script)
+        st.subheader("Original Content / Script")
+        st.code(full_script)
         st.download_button(
             "📥 Download Original Script (.txt)",
-            data=full_original_script.encode("utf-8-sig"),
+            data=full_script.encode("utf-8-sig"),
             file_name="original_script.txt",
             mime="text/plain; charset=utf-8",
         )
@@ -352,24 +372,40 @@ if st.button("⚡ ဗီဒီယိုဖိုင်မှ Script အပြည
         )
 
       with tab3:
-        st.subheader("🤖 AI Script Summary & Story Recap")
-        st.write("**Summary:**")
+        st.subheader("🤖 AI Summary & Story Recap")
+        st.write("**Original Summary:**")
         st.code(summary_en)
         st.write("**မြန်မာအနှစ်ချုပ်:**")
         st.code(summary_my)
 
       with tab4:
-        st.subheader("📄 SRT Subtitle File")
-        st.code(srt_content)
-        st.download_button(
-            "📥 Download Subtitle (.srt)",
-            data=srt_content.encode("utf-8-sig"),
-            file_name="subtitle.srt",
-            mime="text/plain; charset=utf-8",
-        )
+        st.subheader("🎬 SRT Subtitle & Myanmar Voiceover (TTS)")
+        col_sub, col_audio = st.columns(2)
+
+        with col_sub:
+          st.write("📄 **Subtitle File:**")
+          st.code(srt_content[:2000] + "\n[Truncated Preview]")
+          st.download_button(
+              "📥 Download Subtitle (.srt)",
+              data=srt_content.encode("utf-8-sig"),
+              file_name="subtitle.srt",
+              mime="text/plain; charset=utf-8",
+          )
+
+        with col_audio:
+          st.write("🔊 **Myanmar Text-to-Speech (TTS Voiceover):**")
+          try:
+            tts_text = summary_my[:300]
+            tts = gTTS(text=tts_text, lang="my")
+            audio_fp = io.BytesIO()
+            tts.write_to_fp(audio_fp)
+            audio_fp.seek(0)
+            st.audio(audio_fp, format="audio/mp3")
+          except Exception as e:
+            st.warning(f"Audio TTS Generation မရရှိပါ: {str(e)}")
 
     except Exception as e:
       st.error(f"❌ အမှားအယွင်း ဖြစ်ပေါ်သွားပါသည်: {str(e)}")
   else:
-    st.warning("⚠️ ကျေးဇူးပြု၍ RedNote ဗီဒီယိုဖိုင်ကို Upload လုပ်ပေးပါ။")
-      
+    st.warning("⚠️ ကျေးဇူးပြု၍ YouTube (သို့) RedNote Link ကို ရိုက်ထည့်ပေးပါ။")
+    
