@@ -209,7 +209,6 @@ def translate_mymemory(text):
 
 
 def unshorten_rednote_url(url):
-  """RedNote Short Link ကို Login Redirect မဖြစ်အောင် မူရင်း Link သို့ ပြောင်းပေးခြင်း"""
   headers = {
       "User-Agent": (
           "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
@@ -224,9 +223,7 @@ def unshorten_rednote_url(url):
 
 
 def fetch_rednote_data(url):
-  """RedNote မှ Metadata နှင့် စာသားများကို ဆွဲထုတ်ခြင်း"""
   real_url = unshorten_rednote_url(url)
-
   ydl_opts = {
       "quiet": True,
       "skip_download": True,
@@ -242,31 +239,48 @@ def fetch_rednote_data(url):
   try:
     with yt_dlp.YoutubeDL(ydl_opts) as ydl:
       info = ydl.extract_info(real_url, download=False)
-      title = info.get("title", "RedNote Content")
+      title = info.get("title", "")
       description = info.get("description", "")
-      text_content = f"{title}\n\n{description}".strip()
-      return text_content
-  except Exception as e:
-    # yt-dlp မရပါက Direct Web Scrape အဖြစ် Fallback လုပ်မည်
-    try:
-      headers = {
-          "User-Agent": (
-              "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
-          )
-      }
-      resp = requests.get(real_url, headers=headers, timeout=10)
-      if resp.status_code == 200:
-        clean_text = re.sub("<[^<]+?>", "", resp.text)
-        lines = [
-            line.strip() for line in clean_text.splitlines() if line.strip()
-        ]
-        return "\n".join(lines[:15])
-    except Exception:
-      pass
-    raise Exception(
-        "RedNote Server မှ Block ထားပါသဖြင့် Link ကို တိုက်ရိုက်ဖတ်၍မရပါ (RedNote"
-        " App ထဲမှ Share -> Copy Text လုပ်ပြီး စမ်းကြည့်ပေးပါ)။"
-    )
+      
+      # JS ကုဒ်များ သို့မဟုတ် မလိုလားအပ်သော စာသားများ ပါမလာအောင် စစ်ထုတ်မည်
+      clean_title = re.sub(r"function\s*\(.*?\)\s*\{.*?\}", "", title)
+      clean_desc = re.sub(r"function\s*\(.*?\)\s*\{.*?\}", "", description)
+      
+      text_content = f"{clean_title}\n\n{clean_desc}".strip()
+      if len(text_content) > 5:
+        return text_content
+  except Exception:
+    pass
+
+  # Fallback: Web Scraping ဖြင့် စာသားသန့်သန့် ထုတ်ယူခြင်း
+  try:
+    headers = {
+        "User-Agent": (
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
+            " (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+        )
+    }
+    resp = requests.get(real_url, headers=headers, timeout=10)
+    if resp.status_code == 200:
+      # HTML tags နှင့် script များကို ဖယ်ရှားခြင်း
+      html_content = resp.text
+      html_content = re.sub(r"<script.*?>.*?</script>", "", html_content, flags=re.DOTALL)
+      html_content = re.sub(r"<style.*?>.*?</style>", "", html_content, flags=re.DOTALL)
+      clean_text = re.sub(r"<[^<]+?>", " ", html_content)
+      
+      # စာကြောင်းရေအလိုက် အသုံးဝင်မည့် စာသားများကို ရှာထုတ်မည်
+      lines = [line.strip() for line in clean_text.splitlines() if len(line.strip()) > 15]
+      filtered_lines = [l for l in lines if "function" not in l and "var " not in l]
+      
+      if filtered_lines:
+        return "\n".join(filtered_lines[:10])
+  except Exception:
+    pass
+
+  raise Exception(
+      "RedNote Post ထဲမှ စာသားများကို ဖတ်၍မရပါ။ (အကြံပြုချက် - RedNote App "
+      "ထဲမှ Share -> Copy Text ကိုနှိပ်ပြီး ထိုစာသားကို တိုက်ရိုက် Paste လုပ်ပေးပါ)"
+  )
 
 
 if st.button("⚡ Script & AI Processing စတင်မည်", type="primary"):
@@ -277,9 +291,7 @@ if st.button("⚡ Script & AI Processing စတင်မည်", type="primary")
       )
 
       if is_rednote:
-        with st.spinner(
-            "⏳ RedNote ဗီဒီယို/Post မှ စာသားများကို ထုတ်ယူနေပါသည်..."
-        ):
+        with st.spinner("⏳ RedNote Post မှ စာသားများကို သန့်စင်ထုတ်ယူနေပါသည်..."):
           full_script = fetch_rednote_data(media_url)
           words = len(full_script.split())
           chars = len(full_script)
@@ -296,7 +308,6 @@ if st.button("⚡ Script & AI Processing စတင်မည်", type="primary")
           summary_my = translate_mymemory(summary_en)
 
       else:
-        # YouTube Logic
         match = re.search(r"(?:v=|\/)([0-9A-Za-z_-]{11})", media_url)
         video_id = match.group(1) if match else None
         if not video_id:
@@ -310,10 +321,9 @@ if st.button("⚡ Script & AI Processing စတင်မည်", type="primary")
                 video_id, languages=["en", "en-US", "my", "auto"]
             )
           except Exception:
-            # Subtitle/Transcript မပါသော ဗီဒီယိုများအတွက် fallback
             st.warning(
-                "⚠️ ဒီ YouTube ဗီဒီယိုမှာ မူရင်း Subtitle/Transcript"
-                " မပါရှိပါ။ Title သာ ထုတ်ယူပေးပါမည်။"
+                "⚠️ ဒီ YouTube ဗီဒီယိုမှာ မူရင်း Subtitle မပါရှိပါ။ Title နှင့် "
+                "Description ကို ထုတ်ယူပေးပါမည်။"
             )
             ydl_opts = {"skip_download": True, "quiet": True}
             with yt_dlp.YoutubeDL(ydl_opts) as ydl:
@@ -438,4 +448,4 @@ if st.button("⚡ Script & AI Processing စတင်မည်", type="primary")
       st.error(f"❌ အမှားအယွင်း ဖြစ်ပေါ်သွားပါသည်: {str(e)}")
   else:
     st.warning("⚠️ ကျေးဇူးပြု၍ YouTube (သို့) RedNote Link ကို ရိုက်ထည့်ပေးပါ။")
-    
+          
