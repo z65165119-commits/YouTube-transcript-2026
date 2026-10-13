@@ -138,7 +138,6 @@ summary_length = st.sidebar.select_slider(
     value="Medium",
 )
 
-# 🛑 Non-VIP တွေအတွက် ၅ ကြိမ်ပြည့်ရင် ရပ်တန့်မည့် စနစ်
 if not is_vip and current_usage >= FREE_LIMIT:
   st.error("❌ သင့်၏ အခမဲ့ ၅ ကြိမ် အသုံးပြုခွင့် ကုန်ဆုံးသွားပါပြီ။")
   st.warning(
@@ -180,20 +179,16 @@ def generate_srt(transcript_data):
 
 
 def translate_mymemory(text):
-  """MyMemory Translation API ကို အသုံးပြု၍ ဘာသာပြန်ခြင်း"""
   if not text.strip():
     return ""
-
   max_len = 450
   sentences = [
       text[i : i + max_len] for i in range(0, len(text), max_len)
   ]
   translated_chunks = []
-
   for part in sentences:
     try:
       url = "https://api.mymemory.translated.net/get"
-      # RedNote ဖြစ်ပါက တရုတ် သို့မဟုတ် အင်္ဂလိပ်မှ မြန်မာသို့ အလိုအလျောက် ချိန်ရန်
       params = {"q": part, "langpair": "autodetect|my"}
       response = requests.get(url, params=params, timeout=10)
       if response.status_code == 200:
@@ -210,23 +205,21 @@ def translate_mymemory(text):
     except Exception:
       translated_chunks.append(part)
     time.sleep(0.3)
-
   return " ".join(translated_chunks)
 
 
 def fetch_rednote_metadata(url):
-  """yt-dlp ကိုသုံးပြီး RedNote / Xiaohongshu ဗီဒီယိုအချက်အလက်နှင့် direct stream ထုတ်ယူရန်"""
   ydl_opts = {"quiet": True, "skip_download": True}
   try:
     with yt_dlp.YoutubeDL(ydl_opts) as ydl:
       info = ydl.extract_info(url, download=False)
-      title = info.get("title", "RedNote Video")
+      title = info.get("title", "")
       description = info.get("description", "")
-      # Direct video URL
-      video_url = info.get("url") or info.get("requested_formats", [{}])[0].get(
-          "url"
-      )
-      return title, description, video_url
+      # RedNote မှ ရသမျှ စာသားအကုန် (သို့မဟုတ် Captions များ) ကို ပိုမိုစုစည်းပေးခြင်း
+      combined_text = f"Title: {title}\n\nContent/Description:\n{description}"
+      if not description.strip():
+        combined_text = title
+      return title, combined_text
   except Exception as e:
     raise Exception(f"RedNote Link မှ Data ထုတ်ယူ၍မရပါ။ (Error: {str(e)})")
 
@@ -234,27 +227,24 @@ def fetch_rednote_metadata(url):
 if st.button("⚡ Script & AI Processing စတင်မည်", type="primary"):
   if media_url:
     try:
-      # URL ပုံစံကိုကြည့်၍ YouTube လား RedNote လား ခွဲခြားမည်
       is_rednote = (
           "xiaohongshu" in media_url or "xhslink" in media_url or "rednote" in media_url
       )
 
       if is_rednote:
-        with st.spinner("⏳ RedNote ဗီဒီယိုအချက်အလက်များကို ထုတ်ယူနေပါသည်..."):
-          title, description, direct_video_url = fetch_rednote_metadata(
-              media_url
-          )
+        with st.spinner(
+            "⏳ RedNote ဗီဒီယိုအချက်အလက်နှင့် စာသားများကို ထုတ်ယူနေပါသည်..."
+        ):
+          title, full_script = fetch_rednote_metadata(media_url)
           st.video(media_url)
 
-          pure_raw_text = f"{title}. {description}"
+          pure_raw_text = full_script
           words = len(pure_raw_text.split())
           chars = len(pure_raw_text)
           est_read_time = round(words / 150, 1)
 
-          full_script = f"Title: {title}\n\nDescription:\n{description}"
           fetched_transcript = [
-              {"text": title, "start": 0.0, "duration": 5.0},
-              {"text": description, "start": 5.0, "duration": 10.0},
+              {"text": full_script, "start": 0.0, "duration": 10.0}
           ]
           srt_content = generate_srt(fetched_transcript)
 
@@ -264,7 +254,6 @@ if st.button("⚡ Script & AI Processing စတင်မည်", type="primary")
           summary_my = translate_mymemory(summary_en)
 
       else:
-        # YouTube Logic
         match = re.search(r"(?:v=|\/)([0-9A-Za-z_-]{11})", media_url)
         video_id = match.group(1) if match else None
         if not video_id:
@@ -287,7 +276,6 @@ if st.button("⚡ Script & AI Processing စတင်မည်", type="primary")
             }
             with yt_dlp.YoutubeDL(ydl_opts) as ydl:
               info = ydl.extract_info(media_url, download=False)
-              # Fallback logic if needed
               fetched_transcript = [
                   {
                       "text": info.get("title", "YouTube Video"),
@@ -408,4 +396,4 @@ if st.button("⚡ Script & AI Processing စတင်မည်", type="primary")
       st.error(f"❌ အမှားအယွင်း ဖြစ်ပေါ်သွားပါသည်: {str(e)}")
   else:
     st.warning("⚠️ ကျေးဇူးပြု၍ YouTube (သို့) RedNote Link ကို ရိုက်ထည့်ပေးပါ။")
-    
+      
