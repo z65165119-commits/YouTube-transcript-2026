@@ -17,7 +17,7 @@ st.set_page_config(
 )
 
 # ---------------------------------------------------------
-# 🗄️ JSON DATABASE FUNCTIONS FOR PERSISTENT USAGE TRACKING
+# 🗄️ JSON DATABASE FUNCTIONS
 # ---------------------------------------------------------
 DB_FILE = "usage_db.json"
 
@@ -72,7 +72,7 @@ if "logged_in" not in st.session_state:
   st.session_state["user_email"] = ""
 
 # ---------------------------------------------------------
-# 🔝 HEADER BAR WITH SIGN IN / USER INFO
+# 🔝 HEADER BAR
 # ---------------------------------------------------------
 col_title, col_auth = st.columns([3, 1])
 
@@ -115,7 +115,7 @@ is_vip = clean_email in allowed_emails_lower
 current_usage = get_user_usage(clean_email)
 
 # ---------------------------------------------------------
-# ⚙️ SIDEBAR - USER ACCOUNT & OPTIONS
+# ⚙️ SIDEBAR
 # ---------------------------------------------------------
 st.sidebar.header("👤 Account Info")
 st.sidebar.write(f"**Logged in as:**\n{clean_email}")
@@ -208,20 +208,65 @@ def translate_mymemory(text):
   return " ".join(translated_chunks)
 
 
-def fetch_rednote_metadata(url):
-  ydl_opts = {"quiet": True, "skip_download": True}
+def unshorten_rednote_url(url):
+  """RedNote Short Link ကို Login Redirect မဖြစ်အောင် မူရင်း Link သို့ ပြောင်းပေးခြင်း"""
+  headers = {
+      "User-Agent": (
+          "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
+          " (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+      )
+  }
+  try:
+    res = requests.head(url, headers=headers, allow_redirects=True, timeout=10)
+    return res.url
+  except Exception:
+    return url
+
+
+def fetch_rednote_data(url):
+  """RedNote မှ Metadata နှင့် စာသားများကို ဆွဲထုတ်ခြင်း"""
+  real_url = unshorten_rednote_url(url)
+
+  ydl_opts = {
+      "quiet": True,
+      "skip_download": True,
+      "http_headers": {
+          "User-Agent": (
+              "Mozilla/5.0 (iPhone; CPU iPhone OS 16_6 like Mac OS X)"
+              " AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.6"
+              " Mobile/15E148 Safari/604.1"
+          )
+      },
+  }
+
   try:
     with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-      info = ydl.extract_info(url, download=False)
-      title = info.get("title", "")
+      info = ydl.extract_info(real_url, download=False)
+      title = info.get("title", "RedNote Content")
       description = info.get("description", "")
-      # RedNote မှ ရသမျှ စာသားအကုန် (သို့မဟုတ် Captions များ) ကို ပိုမိုစုစည်းပေးခြင်း
-      combined_text = f"Title: {title}\n\nContent/Description:\n{description}"
-      if not description.strip():
-        combined_text = title
-      return title, combined_text
+      text_content = f"{title}\n\n{description}".strip()
+      return text_content
   except Exception as e:
-    raise Exception(f"RedNote Link မှ Data ထုတ်ယူ၍မရပါ။ (Error: {str(e)})")
+    # yt-dlp မရပါက Direct Web Scrape အဖြစ် Fallback လုပ်မည်
+    try:
+      headers = {
+          "User-Agent": (
+              "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
+          )
+      }
+      resp = requests.get(real_url, headers=headers, timeout=10)
+      if resp.status_code == 200:
+        clean_text = re.sub("<[^<]+?>", "", resp.text)
+        lines = [
+            line.strip() for line in clean_text.splitlines() if line.strip()
+        ]
+        return "\n".join(lines[:15])
+    except Exception:
+      pass
+    raise Exception(
+        "RedNote Server မှ Block ထားပါသဖြင့် Link ကို တိုက်ရိုက်ဖတ်၍မရပါ (RedNote"
+        " App ထဲမှ Share -> Copy Text လုပ်ပြီး စမ်းကြည့်ပေးပါ)။"
+    )
 
 
 if st.button("⚡ Script & AI Processing စတင်မည်", type="primary"):
@@ -233,14 +278,11 @@ if st.button("⚡ Script & AI Processing စတင်မည်", type="primary")
 
       if is_rednote:
         with st.spinner(
-            "⏳ RedNote ဗီဒီယိုအချက်အလက်နှင့် စာသားများကို ထုတ်ယူနေပါသည်..."
+            "⏳ RedNote ဗီဒီယို/Post မှ စာသားများကို ထုတ်ယူနေပါသည်..."
         ):
-          title, full_script = fetch_rednote_metadata(media_url)
-          st.video(media_url)
-
-          pure_raw_text = full_script
-          words = len(pure_raw_text.split())
-          chars = len(pure_raw_text)
+          full_script = fetch_rednote_data(media_url)
+          words = len(full_script.split())
+          chars = len(full_script)
           est_read_time = round(words / 150, 1)
 
           fetched_transcript = [
@@ -249,11 +291,12 @@ if st.button("⚡ Script & AI Processing စတင်မည်", type="primary")
           srt_content = generate_srt(fetched_transcript)
 
         with st.spinner("⏳ မြန်မာဘာသာသို့ ဘာသာပြန်ဆိုနေပါသည်..."):
-          myanmar_translation = translate_mymemory(pure_raw_text)
-          summary_en = pure_raw_text[:300]
+          myanmar_translation = translate_mymemory(full_script)
+          summary_en = full_script[:300]
           summary_my = translate_mymemory(summary_en)
 
       else:
+        # YouTube Logic
         match = re.search(r"(?:v=|\/)([0-9A-Za-z_-]{11})", media_url)
         video_id = match.group(1) if match else None
         if not video_id:
@@ -267,22 +310,21 @@ if st.button("⚡ Script & AI Processing စတင်မည်", type="primary")
                 video_id, languages=["en", "en-US", "my", "auto"]
             )
           except Exception:
-            ydl_opts = {
-                "skip_download": True,
-                "writesubtitles": True,
-                "writeautomaticsub": True,
-                "subtitleslangs": ["en", "my", "en-US"],
-                "quiet": True,
-            }
+            # Subtitle/Transcript မပါသော ဗီဒီယိုများအတွက် fallback
+            st.warning(
+                "⚠️ ဒီ YouTube ဗီဒီယိုမှာ မူရင်း Subtitle/Transcript"
+                " မပါရှိပါ။ Title သာ ထုတ်ယူပေးပါမည်။"
+            )
+            ydl_opts = {"skip_download": True, "quiet": True}
             with yt_dlp.YoutubeDL(ydl_opts) as ydl:
               info = ydl.extract_info(media_url, download=False)
-              fetched_transcript = [
-                  {
-                      "text": info.get("title", "YouTube Video"),
-                      "start": 0.0,
-                      "duration": 5.0,
-                  }
-              ]
+              video_title = info.get("title", "")
+              video_desc = info.get("description", "")
+              fetched_transcript = [{
+                  "text": f"{video_title}\n{video_desc}",
+                  "start": 0.0,
+                  "duration": 10.0,
+              }]
 
           english_lines = []
           pure_texts = []
@@ -396,4 +438,4 @@ if st.button("⚡ Script & AI Processing စတင်မည်", type="primary")
       st.error(f"❌ အမှားအယွင်း ဖြစ်ပေါ်သွားပါသည်: {str(e)}")
   else:
     st.warning("⚠️ ကျေးဇူးပြု၍ YouTube (သို့) RedNote Link ကို ရိုက်ထည့်ပေးပါ။")
-      
+    
